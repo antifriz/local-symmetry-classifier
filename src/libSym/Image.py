@@ -15,14 +15,61 @@ def preprocess_image(image, max_width=640, max_height=480):
 
 class Image(object):
     def __init__(self, path, id_building, max_width=640, max_height=480):
-        self.path = path
-        self.image = cv2.imread(path)
-        self.resized_image, self.res_grayscale_image = preprocess_image(self.image, max_width, max_height)
-        self.id_building = id_building
+        """
+
+        :param str path:
+        :param int id_building:
+        :param int max_width:
+        :param int max_height:
+        """
+        self._path = path
+        self._image = cv2.imread(path)
+
+        self._resized_image, self._res_grayscale_image = preprocess_image(self.image, max_width, max_height)
+        self._id_building = id_building
+
+    @property
+    def path(self):
+        """
+
+        :rtype: str
+        """
+        return self._path
+
+    @property
+    def image(self):
+        """
+
+        :rtype: np
+        """
+        return self._image
+
+    @property
+    def resized_image(self):
+        """
+
+        :rtype: np
+        """
+        return self._resized_image
+
+    @property
+    def res_grayscale_image(self):
+        """
+
+        :rtype: np
+        """
+        return self._res_grayscale_image
+
+    @property
+    def id_building(self):
+        """
+
+        :rtype: int
+        """
+        return self._id_building
 
     def __str__(self):
-        return str(self.__dict__)
+        return str({'path': self.path, 'id_building': self.id_building})
 
     def __repr__(self):
         return self.__str__()
-

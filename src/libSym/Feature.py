@@ -1,6 +1,18 @@
-class Feature:
-    def __init__(self, hashFeatures, x, y, image, id_building, w):
-        self.hashFeatures = hashFeatures
+from libSym import Image
+
+
+class Feature(object):
+    def __init__(self, hash_features, x, y, image, id_building, w):
+        """
+
+        :param np hash_features:
+        :param int x:
+        :param int y:
+        :param Image image:
+        :param int id_building:
+        :param int w:
+        """
+        self.hashFeatures = hash_features
         self.x = x
         self.y = y
         self.image = image
@@ -9,3 +21,6 @@ class Feature:
 
     def __str__(self):
         return str(self.hashFeatures)
+
+    def __repr__(self):
+        return self.__str__()

@@ -33,7 +33,6 @@ def unique_rows(a, orderBy):
 
 
 def create_symmetry_map(image, width, verbose=False):
-    print width
     img = np.zeros(image.shape[1] - width * 2)
     for num in xrange(1, image.shape[0]):
         results = scan_whole_line(image, num, width)
@@ -107,11 +106,14 @@ def process_features(features, width, image):
     return feature_vectors
 
 
-class FeatureExtractor:
-    def extractFeatures(self, image):  # returns Feature[] for one image
+class FeatureExtractor(object):
+    def __init__(self, min_word_exponent):
+        self._min_word_exponent = min_word_exponent
+
+    def extract_features(self, image, verbose=False):  # returns Feature[] for one image
 
         features_all = []
-        i = 7
+        i = self._min_word_exponent
         while True:
             w = np.power(2, i)
             if image.res_grayscale_image.shape[0] < 2 * w:
@@ -124,16 +126,17 @@ class FeatureExtractor:
                 break
 
             features_all.extend(features)
-            i = i + 1;
+            i += 1
 
-        print "Feature count: " + str(len(features_all))
+        if verbose:
+            print "Feature count: " + str(len(features_all))
         return features_all  # , feature_map
 
-    def extractFeaturesMulti(self, images):  # returns Feature[] for set of images
+    def extract_features_multi(self, images, verbose=False):  # returns Feature[] for set of images
         feature_list = []
 
         for image in images:
-            features = self.extractFeatures(image)
-            feature_list.extend(features);
+            features = self.extract_features(image, verbose)
+            feature_list.extend(features)
 
-        return feature_list;
+        return feature_list
