@@ -1,4 +1,4 @@
-from libSym import Image
+from libSym.Image import Image
 
 
 class Feature(object):
@@ -12,7 +12,7 @@ class Feature(object):
         :param int id_building:
         :param int w:
         """
-        self.hashFeatures = hash_features
+        self.hash_features = hash_features
         self.x = x
         self.y = y
         self.image = image
@@ -20,7 +20,7 @@ class Feature(object):
         self.w = w
 
     def __str__(self):
-        return str(self.hashFeatures)
+        return str(self.id_building) + " " + self.image.path + " (" + str(self.x) + "," + str(self.y) + ")"
 
     def __repr__(self):
         return self.__str__()
