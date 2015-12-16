@@ -104,13 +104,20 @@ def process_features(features, width, image):
         feature_vectors.append(Feature(feature_vector, feature_x, feature_y, image, image.id_building, width))
 
     return feature_vectors
-
-
+from os.path import isfile, join, exists,basename
+import numpy as np
+import pickle
 class FeatureExtractor(object):
     def __init__(self, min_word_exponent):
         self._min_word_exponent = min_word_exponent
 
     def extract_features(self, image, verbose=False):  # returns Feature[] for one image
+
+        path = join("../data","cache",basename(image.path)+".f")
+
+        if exists(path):
+            return pickle.load(open(path,'rb'))
+
 
         features_all = []
         i = self._min_word_exponent
@@ -130,11 +137,12 @@ class FeatureExtractor(object):
 
         if verbose:
             print "Feature count: " + str(len(features_all))
+            print path
+        pickle.dump(features_all,open(path,'wb'))
         return features_all  # , feature_map
 
     def extract_features_multi(self, images, verbose=False):  # returns Feature[] for set of images
         feature_list = []
-
         for image in images:
             features = self.extract_features(image, verbose)
             feature_list.extend(features)

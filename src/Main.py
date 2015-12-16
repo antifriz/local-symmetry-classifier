@@ -10,7 +10,7 @@ train_images = imageLoader.get_train_image_matrices()
 test_images = imageLoader.get_test_image_matrices()
 print str(train_images)
 
-feature_extractor = FeatureExtractor(7)
+feature_extractor = FeatureExtractor(3)
 train_features = feature_extractor.extract_features_multi(train_images, verbose=True)
 
 test_features = feature_extractor.extract_features(test_images[0], verbose=True)
@@ -55,8 +55,8 @@ for feature in test_features:
     close_features = map(lambda (i, d): feature_space_analyzer._features[i], zip(indices, distances))
     all_neighbours.append([{'feature': feature, 'neighbors': close_features, 'distances': distances}])
 
-    #if distances[0]*1.2>distances[1]:
-    #    continue
+    if distances[0]*1.1>=distances[1]:
+        continue
     print distances[0]
     test_img = feature.image.resized_image.copy()
     point = (int(feature.x), int(feature.y))
