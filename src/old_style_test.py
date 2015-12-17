@@ -1,7 +1,7 @@
 import cv2
 
 from libSym.FeatureExtractor import FeatureExtractor
-from libSym.ImageLoader import ImageLoader
+from libSym.image_loader import ImageLoader
 from libSym.Feature import Feature
 
 imageLoader = ImageLoader(data_path="../data")
