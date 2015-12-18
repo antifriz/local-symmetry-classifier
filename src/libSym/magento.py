@@ -4,8 +4,7 @@ import sklearn.naive_bayes
 import itertools
 import cv2
 import numpy as np
-from random import shuffle
-
+import random
 import scipy.ndimage as ndimage
 import scipy.ndimage.filters as filters
 from sklearn.neighbors import KNeighborsClassifier
@@ -16,7 +15,7 @@ def _preprocess_image(image, max_width=640, max_height=480):
         image = cv2.imread(image)
     elif type(image) is not np.ndarray:
         raise Exception('Passed obj should be string or numpy array')
-
+            
     factor = 1
     if image.shape[0] > max_height:
         factor = max_height / float(image.shape[0])
@@ -90,6 +89,7 @@ def _unique_rows(a):
 def create_descriptors(image):
     preprocessed_image = _preprocess_image(image)
     indices = _extract_significant_points_in_image(preprocessed_image)
+    preprocessed_image = cv2.GaussianBlur(preprocessed_image, sigmaX=0, ksize=(3, 3))
     descriptors = []
     for x, y in indices:
         for w in np.logspace(3, 7, 9, base=2).astype(np.int):
@@ -103,7 +103,8 @@ def create_descriptors(image):
         cv2.circle(preprocessed_image, (x, y), 10, 255)
     # plt.figure(figsize=(20,20)),plt.imshow(gray, cmap='gray'),plt.show()
     descriptors = list(_unique_rows(np.array(descriptors)))
-    shuffle(descriptors)
+    random.seed(42)
+    random.shuffle(descriptors)
     descriptors = np.array(descriptors[:400])
     return descriptors
 
@@ -113,15 +114,13 @@ class MagentoClassifier(object):
         self._classifier = sklearn.neighbors.KNeighborsClassifier(n_neighbors=n_neighbors, weights=weights)
         self._train_image_ids = []
 
-    def fit(self, filenames):
+    def fit(self, filenames, labels):
         descriptors_all = []
         self._train_image_ids = []
-        cnt = 0
-        for filename in filenames:
+        for filename, cnt in zip(filenames, labels):
             descriptors = create_descriptors(filename)
             descriptors_all += list(descriptors)
             self._train_image_ids += list(np.ones(descriptors.shape[0]) * cnt)
-            cnt += 1
 
         descriptors_all = np.array(descriptors_all)
         self._train_image_ids = np.array(self._train_image_ids)
