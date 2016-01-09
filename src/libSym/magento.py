@@ -147,12 +147,12 @@ def _unique_rows(a):
 #
 
 
-def _extract_significant_points_in_image(image, desired_point_count=1000):
+def _extract_significant_points_in_image(pyramid_level, desired_point_count=1000):
     """
 
-    :type image: Image
+    :type pyramid_level: PyramidLevel
     """
-    processed_image = image.get_processed()
+    processed_image = pyramid_level.get_matrix()
     processed_image = np.float32(processed_image)
     harris_data = cv2.cornerHarris(processed_image, 2, 3, 0.04)
 
@@ -191,10 +191,7 @@ class MagentoClassifier(object):
         """
 
         self._buildings = buildings
-        features_all = [feature for building in buildings
-                        for image in building.get_images()
-                        for feature in
-                        image.get_features()]
+        features_all = [feature for building in buildings for feature in building.get_all_features()]
 
         descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
         assert len(descriptors_all.shape) == 2
@@ -213,7 +210,7 @@ class MagentoClassifier(object):
         :type image: Image
         """
 
-        features_all = image.get_features()
+        features_all = image.get_all_features()
 
         descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
         assert len(descriptors_all.shape) == 2
@@ -232,7 +229,7 @@ class MagentoClassifier(object):
         # else:
         #    raise Exception('Unknown predict method')
 
-    def show_match(self, image_test, matches,distances):
+    def show_match(self, image_test, matches, distances):
         """
         :type image_test: Image
         :type matches: np.array
@@ -256,7 +253,7 @@ class MagentoClassifier(object):
 
         raw_showoff = showoff.copy()
         aa = showoff.copy()
-        for feature, match,distance in zip(image_test.get_features(), matches,distances):
+        for feature, match, distance in zip(image_test.get_features(), matches, distances):
             showoff2 = raw_showoff.copy()
             xy1 = feature.get_xy()
             other_feature = image_train.get_features()[match]
@@ -266,22 +263,22 @@ class MagentoClassifier(object):
             score___ = (1 - (feature._score * other_feature._score) / (15.0 ** 2))
             rating = int(score___ * 128 + 127)
             distance_ = 1 / (distance + 1) * 10
-            print distance, distance_,rating,feature._score, other_feature._score
+            print distance, distance_, rating, feature._score, other_feature._score
             cv2.line(showoff, tuple(xy1), tuple(xy2), (0, 0, rating), distance_)
             cv2.line(showoff2, tuple(xy1), tuple(xy2), (0, 0, rating), distance_)
-            cv2.circle(showoff,  tuple(xy1), feature._w, (0, 0, 255), thickness=1)
+            cv2.circle(showoff, tuple(xy1), feature._w, (0, 0, 255), thickness=1)
             cv2.circle(showoff, tuple(xy2), other_feature._w, (0, 0, 255), thickness=1)
-            cv2.circle(showoff2,  tuple(xy1), feature._w, (0, 0, 255), thickness=1)
+            cv2.circle(showoff2, tuple(xy1), feature._w, (0, 0, 255), thickness=1)
             cv2.circle(showoff2, tuple(xy2), other_feature._w, (0, 0, 255), thickness=1)
-
 
             cv2.imshow("", showoff2)
 
-            def get_stripe(img,f):
-                return cv2.resize(img[f._y - 5:f._y + 5+1, f._x - f._w:f._x + f._w + 1], (0, 0), fx=10, fy=10, interpolation=cv2.INTER_NEAREST)
+            def get_stripe(img, f):
+                return cv2.resize(img[f._y - 5:f._y + 5 + 1, f._x - f._w:f._x + f._w + 1], (0, 0), fx=10, fy=10,
+                                  interpolation=cv2.INTER_NEAREST)
 
-            first_stripe = get_stripe(image_test.get_processed(),feature)
-            second_stripe = get_stripe(image_train.get_processed(),other_feature)
+            first_stripe = get_stripe(image_test.get_processed(), feature)
+            second_stripe = get_stripe(image_train.get_processed(), other_feature)
             cv2.imshow("A", first_stripe)
             cv2.imshow("B", second_stripe)
             cv2.imshow("", aa)
@@ -293,8 +290,8 @@ class MagentoClassifier(object):
 
 
 class Feature(object):
-    def __init__(self, image, score, x, y, w):
-        self._image = image
+    def __init__(self, pyramid_level, score, x, y, w):
+        self._pyramid_level = pyramid_level
         self._x = x
         self._y = y
         self._w = w
@@ -308,14 +305,14 @@ class Feature(object):
         return self._descriptor
 
     def _calculate_descriptor(self):
-        self._descriptor = _process_descriptors(self.get_image().get_processed()[self._y, :], self._x, self._w)
+        self._descriptor = _process_descriptors(self.get_pyramid_level().get_matrix()[self._y, :], self._x, self._w)
 
-    def get_image(self):
+    def get_pyramid_level(self):
         """
 
-        :rtype: Image
+        :rtype: PyramidLevel
         """
-        return self._image
+        return self._pyramid_level
 
     def draw_me(self, image):
         """
@@ -326,7 +323,7 @@ class Feature(object):
         # cv2.circle(image, (self._x, self._y), 1, (0, 0, 255), thickness=2)
 
     def show(self, title=""):
-        img = self.get_image().get_rgb().copy()
+        img = self.get_pyramid_level().get_matrix().copy()
         self.draw_me(img)
         cv2.imshow(title if title is not "" else self.__repr__(), img)
         cv2.waitKey()
@@ -339,18 +336,96 @@ class Feature(object):
         return np.array([self._x, self._y])
 
 
+class PyramidLevel(object):
+    def __init__(self, image, matrix):
+        """
+
+        :type image: Image
+        """
+        self._image = image
+        self._matrix = matrix
+        self._features = None
+
+    def get_parent_image(self):
+        return self._image
+
+    def get_matrix(self):
+        return self._matrix
+
+    def get_features(self):
+        """
+
+        :rtype: list[Feature]
+        """
+        if self._features is None:
+            self._extract_features()
+        return self._features
+
+    def _extract_features(self):
+        """
+        :rtype: list[Feature]
+        """
+        w = 16
+
+        indices = _extract_significant_points_in_image(self)
+
+        image_matrix = self.get_matrix()
+        features = []
+
+        features_in_level = []
+        xys_in_level = []
+        for x, y in indices:
+            if image_matrix.shape[1] - x < w or x < w:
+                continue
+            scan_line = image_matrix[y, :]
+            score = _symmetry_score_for_pixel(scan_line, x, w,
+                                              cv2.getGaussianKernel(w * 2, 0)[w:] * 2)  # np.ones(w)/w)
+            if score < 16:
+                feature = Feature(self, score, x, y, w)
+                features.append(feature)
+                features_in_level.append(feature)
+                xys_in_level.append((x, y))
+                cv2.imshow("", zoom(scan_line, 30))
+                cv2.waitKey()
+        xys_in_level = np.array(xys_in_level)
+        for feature, xy in zip(features_in_level, xys_in_level):
+            min_distance = Image.DEFAULT_WIDTH + Image.DEFAULT_HEIGHT
+            for other_feature, other_xy in zip(features_in_level, xys_in_level):
+                if other_feature._score > feature._score:
+                    distance = euclidean(xy, other_xy)
+                    if distance < min_distance:
+                        min_distance = distance
+            feature._locality = min_distance
+
+        self._features = [feature for feature in features if feature._locality > 10]
+
+    def show_features(self, title=""):
+        img = self.get_matrix().copy()
+        [feature.draw_me(img) for feature in self.get_features()]
+        cv2.imshow(title if title is not "" else self.__repr__(), img)
+        cv2.waitKey()
+
+    def get_image(self):
+        """
+
+        :rtype: Image
+        """
+        return self.get_image()
+
+
 class Image(object):
     DEFAULT_WIDTH = 640
     DEFAULT_HEIGHT = 480
-    WS = np.logspace(3, 7, 9, base=2).astype(np.int)[2:]
+    PYRAMID_RATIO = np.sqrt(2)
+    PYRAMID_LIMIT = 10
 
     def __init__(self, image_path):
         self._image_path = image_path
         self._image_gray = None
         self._image_rgb = None
         self._image_processed = None
-        self._features = None
         self._building = None
+        self._pyramid = None
 
     def get_gray(self):
         """
@@ -360,6 +435,32 @@ class Image(object):
         if self._image_gray is None:
             self._lazy_load()
         return self._image_gray
+
+    def get_pyramid(self):
+        """
+
+        :rtype: PyramidLevel
+        """
+        if self._pyramid is None:
+            self._init_pyramid()
+        return self._pyramid
+
+    def _init_pyramid(self):
+        self._pyramid = []
+        current = self.get_processed()
+        while current.shape[0] > Image.PYRAMID_LIMIT and current.shape[1] > Image.PYRAMID_LIMIT:
+            self._pyramid.append(PyramidLevel(self, current))
+            current = Image.pyr_down(current)
+
+    @staticmethod
+    def pyr_down(image):
+        """
+
+        :param image: np.ndarray
+        :rtype: np.ndarray
+        """
+        return cv2.pyrDown(image)  # , dstsize=(
+        # int(image.shape[0] / Image.PYRAMID_RATIO), int(image.shape[1] / Image.PYRAMID_RATIO)))
 
     def get_rgb(self):
         """
@@ -390,52 +491,6 @@ class Image(object):
         image = cv2.resize(image, (0, 0), fx=factor, fy=factor, interpolation=cv2.INTER_CUBIC) if factor < 1 else image
         return image
 
-    def get_features(self):
-        """
-
-        :rtype: list[Feature]
-        """
-        if self._features is None:
-            self._extract_features()
-        return self._features
-
-    def _extract_features(self):
-        """
-        :rtype: list[Feature]
-        """
-        indices = _extract_significant_points_in_image(self)
-
-        image_matrix = self.get_processed()
-        features = []
-
-        for w in Image.WS:
-            features_in_level = []
-            xys_in_level = []
-            for x, y in indices:
-                if image_matrix.shape[1] - x < w or x < w:
-                    continue
-                scan_line = image_matrix[y, :]
-                score = _symmetry_score_for_pixel(scan_line, x, w,
-                                                  cv2.getGaussianKernel(w * 2, 0)[w:] * 2)  # np.ones(w)/w)
-                if score < 16:
-                    feature = Feature(self, score, x, y, w)
-                    features.append(feature)
-                    features_in_level.append(feature)
-                    xys_in_level.append((x, y))
-            xys_in_level = np.array(xys_in_level)
-            for feature, xy in zip(features_in_level, xys_in_level):
-                min_distance = Image.DEFAULT_WIDTH + Image.DEFAULT_HEIGHT
-                for other_feature, other_xy in zip(features_in_level, xys_in_level):
-                    if other_feature._score > feature._score:
-                        distance = euclidean(xy, other_xy)
-                        if distance < min_distance:
-                            min_distance = distance
-                feature._locality = min_distance
-
-        self._features = [feature for feature in features if feature._locality > 10]
-        # for feature in self._features:
-        #    print feature
-
     def set_building(self, building):
         """
 
@@ -463,11 +518,8 @@ class Image(object):
         cv2.imshow(title if title is not "" else self._image_path, self.get_rgb())
         cv2.waitKey()
 
-    def show_features(self, title=""):
-        img = self.get_rgb().copy()
-        [feature.draw_me(img) for feature in self.get_features()]
-        cv2.imshow(title if title is not "" else self.__repr__(), img)
-        cv2.waitKey()
+    def get_all_features(self):
+        return [feature for pyramid_level in self.get_pyramid() for feature in pyramid_level.get_features()]
 
 
 class Building(object):
@@ -504,3 +556,6 @@ class Building(object):
         :rtype: int
         """
         return self._identifier
+
+    def get_all_features(self):
+        return [feature for image in self.get_images() for feature in image.get_all_features()]
