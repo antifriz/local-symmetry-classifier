@@ -86,19 +86,26 @@ def _extract_significant_points_in_image(pyramid_level):
     return indices_all[harris_data > k * harris_data.max()]
 
 
-def _process_descriptors(pyramid_level, x, y, w):
+def _process_descriptors(pyramid_level, feature):
     """
 
     :type pyramid_level: PyramidLevel
-    :type x: int
-    :type y: int
-    :type w: int
+    :type feature:Feature
     :rtype: np.array
     """
+    x = feature._x
+    y= feature._y
+    w = feature._w
     neigh = 4
     matrix = pyramid_level.get_matrix()
     scan_lines = matrix[y - neigh: y + neigh + 1, :]
     left = scan_lines[:, x - w:x].astype(float)
+
+    # cv2.imshow("sl",cv2.resize(scan_lines[:,x-w:x+w],dsize=(0,0),fx=10,fy=10,interpolation=cv2.INTER_NEAREST))
+    # k = cv2.waitKey(0)
+    # if k == 27:         # wait for ESC key to exit
+    #     cv2.destroyAllWindows()
+    #     exit(0)
 
     kernel = cv2.getGaussianKernel(w * 2, 0)[:w] * 2
     c1,_ =  np.meshgrid(kernel,np.zeros(neigh*2+1))
@@ -106,10 +113,11 @@ def _process_descriptors(pyramid_level, x, y, w):
 
     right = np.fliplr(scan_lines[:, x:x + w]).astype(float)
     avg_line = (left + right) / 2
-    raw = (avg_line < np.average(avg_line, axis=0)).astype(float)
-    raw *= c1
+    raw = (avg_line < np.average(avg_line)).astype(float)
+    #raw *= c1
     ravel = np.ravel(raw)
-    assert ravel.shape[0] == (neigh*2+1)*w, ""+ravel.shape+" "+(neigh*2+1)*w
+    assert ravel.shape[0] == (neigh*2+1)*w, ""+str(ravel.shape)+" "+str((neigh*2+1)*w)
+    #np.append(ravel,feature.get_global_xy_w()[0])
     return ravel
     # return sp.ndimage.interpolation.zoom(raw, 128 / float(w), order=3, mode='constant')
 
@@ -132,7 +140,6 @@ class MagentoClassifier(object):
         features_all = [feature for building in buildings for feature in building.get_all_features()]
 
         descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
-        print descriptors_all, descriptors_all.shape
         assert len(descriptors_all.shape) == 2
 
         classes_all = np.array(
@@ -154,7 +161,7 @@ class MagentoClassifier(object):
 
         descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
         assert len(descriptors_all.shape) == 2
-        distances, matches = self._classifier.kneighbors(descriptors_all, n_neighbors=10, return_distance=True)
+        distances, matches = self._classifier.kneighbors(descriptors_all, n_neighbors=1, return_distance=True)
         self.show_match(image, matches, distances)
         # descriptors = create_descriptors(filename)
         # if method == 'default':
@@ -187,21 +194,50 @@ class MagentoClassifier(object):
 
         showoff = np.zeros((Image.DEFAULT_HEIGHT, size, 3), np.uint8)
 
-        print showoff.shape, image_test_rgb.shape
         showoff[0:image_test_rgb.shape[0], 0:image_test_rgb.shape[1], :] = image_test_rgb
         showoff[0:image_train_rgb.shape[0], 0 + offset:image_train_rgb.shape[1] + offset, :] = image_train_rgb
 
+        only_circles = showoff.copy()
         raw_showoff = showoff.copy()
+        for feature in image_test.get_all_features():
+            xy1, w1 = feature.get_global_xy_w()
+            cv2.circle(only_circles, tuple(xy1), w1, (0, 0, 255), thickness=1)
+        for feature in image_train.get_all_features():
+            xy2, w2 = feature.get_global_xy_w()
+            xy2 = xy2 + [offset, 0]  # do not += !!!
+            cv2.circle(only_circles, tuple(xy2), w2, (0, 0, 255), thickness=1)
+        cv2.imshow("ftrs",only_circles)
+        #cv2.waitKey()
+
+        matching_score = 0
+        for feature, matchs, distancess in zip(image_test.get_all_features(), matches, distances):
+            xy1, w1 = feature.get_global_xy_w()
+
+            best_other_feature = image_train.get_all_features()[matchs[0]]
+            xy2, w2 = best_other_feature.get_global_xy_w()
+            matching_score +=(xy1-xy2)**2# + (w1-w2)**2
+        print "",np.sqrt(np.average(matching_score))," +- ", np.sqrt(np.std(matching_score))
+
+        FACTOR = 3
         for feature, matchs, distancess in zip(image_test.get_all_features(), matches, distances):
             showoff2 = raw_showoff.copy()
             xy1, w1 = feature.get_global_xy_w()
 
+            if all(distances>FACTOR):
+                continue
+
             cv2.circle(showoff, tuple(xy1), w1, (0, 0, 255), thickness=1)
             cv2.circle(showoff2, tuple(xy1), w1, (0, 0, 255), thickness=1)
-            for match,distance in zip(matchs,distancess):
+
+            feature.show("test")
+            for idx, (match,distance) in enumerate(zip(matchs,distancess)):
+                if distance>FACTOR:
+                    continue
                 other_feature = image_train.get_all_features()[match]
-                xy2, w2 = other_feature.get_global_xy_w()
-                xy2 = xy2 + [offset, 0]  # do not += !!!
+                xy2_, w2 = other_feature.get_global_xy_w()
+                xy2 = xy2_ + [offset, 0]  # do not += !!!
+                other_feature.show("train"+str(idx))
+                print distance
 
                 score___ = (1 - (feature._score * other_feature._score) / (15.0 ** 2))
                 rating = int(score___ * 128 + 127)
@@ -212,20 +248,26 @@ class MagentoClassifier(object):
                 cv2.circle(showoff, tuple(xy2), w2, (0, 0, 255), thickness=1)
                 cv2.circle(showoff2, tuple(xy2), w2, (0, 0, 255), thickness=1)
 
+                #if (xy2_-xy1).dot(xy2_-xy1) < 1000:
             cv2.imshow("", showoff2)
-
+            k = cv2.waitKey(1)
+            if k == 27:         # wait for ESC key to exit
+                cv2.destroyAllWindows()
+                exit(0)
             # def get_stripe(img, f):
             #     return cv2.resize(img[f._y - 5:f._y + 5 + 1, f._x - f._w:f._x + f._w + 1], (0, 0), fx=10, fy=10,
-            #                       interpolation=cv2.INTER_NEAREST)
+             #                       interpolation=cv2.INTER_NEAREST)
             #
             # first_stripe = get_stripe(image_test.get_processed(), feature)
             # second_stripe = get_stripe(image_train.get_processed(), other_feature)
             # cv2.imshow("A", first_stripe)
             # cv2.imshow("B", second_stripe)
-            cv2.waitKey()
+
+
 
         cv2.imshow("", showoff)
-        cv2.waitKey()
+        cv2.imwrite("../data/outputs/jej/_"+str(random.random())+"cool.jpg",showoff,[int(cv2.IMWRITE_JPEG_QUALITY), 100])
+        #cv2.waitKey()
 
 
 class Feature(object):
@@ -237,6 +279,7 @@ class Feature(object):
         self._score = score
         self._descriptor = None
         self._locality = None
+        self._calculate_descriptor()
 
     def get_descriptor(self):
         """
@@ -248,7 +291,7 @@ class Feature(object):
         return self._descriptor
 
     def _calculate_descriptor(self):
-        self._descriptor = _process_descriptors(self.get_pyramid_level(), self._x, self._y, self._w)
+        self._descriptor = _process_descriptors(self.get_pyramid_level(), self)
 
     def get_pyramid_level(self):
         """
@@ -266,10 +309,50 @@ class Feature(object):
         # cv2.circle(image, (self._x, self._y), 1, (0, 0, 255), thickness=2)
 
     def show(self, title=""):
-        img = self.get_pyramid_level().get_matrix().copy()
-        self.draw_me(img)
-        cv2.imshow(title if title is not "" else self.__repr__(), img)
-        cv2.waitKey()
+        # img = self.get_pyramid_level().get_matrix().copy()
+        # self.draw_me(img)
+        # cv2.imshow(title if title is not "" else self.__repr__(), img)
+        # cv2.waitKey()
+        matrix = self.get_pyramid_level().get_matrix()
+        neigh = 4
+        scan_lines = matrix[self._y - neigh: self._y + neigh + 1, :]
+
+        area = scan_lines[:, self._x - self._w:self._x + self._w]
+        avg = np.average(area)
+        #print avg
+        #avg = np.tile(avg, (area.shape[1], 1)).T
+        #print avg
+
+        area2 = (np.bitwise_not(area>avg)).astype(np.uint8)*255
+
+        resize = lambda img: cv2.resize(img, dsize=(0, 0), fx=10, fy=10, interpolation=cv2.INTER_NEAREST)
+
+
+        descriptor = self.get_descriptor()
+        desc = np.reshape(descriptor,(area.shape[0],len(descriptor)/area.shape[0] ))
+        desc = (desc - desc.min()) /(desc.min() - desc.max())*255
+        desc = desc.astype(np.uint8)
+
+
+        area = cv2.cvtColor(area,cv2.COLOR_GRAY2BGR)
+        area2 = cv2.cvtColor(area2,cv2.COLOR_GRAY2BGR)
+        desc = cv2.cvtColor(desc.astype(np.uint8)*255,cv2.COLOR_GRAY2BGR)
+        padding = np.zeros((area.shape[0],5,3))
+        padding[:] = (0,0,255)
+
+
+
+        large_image = np.hstack((area2,padding,desc))
+
+        large_image[:area.shape[0],:area.shape[1],:] = area
+
+        cv2.imshow(title, resize(area))
+        cv2.imshow(title+"-binary", resize(large_image))
+        #cv2.imshow(title +"-descriptor", resize(desc))
+        # k = cv2.waitKey(0)
+        # if k == 27:         # wait for ESC key to exit
+        #     cv2.destroyAllWindows()
+        #     exit(0)
 
     def __repr__(self):
         return "{xyw=(" + str(self._x) + "," + str(self._y) + "," + str(self._w) + "), score=" + str(
@@ -330,7 +413,11 @@ class PyramidLevel(object):
                 continue
             if image_matrix.shape[0] <=y+4 or y<4: #todo
                 continue
-            score = _symmetry_score_for_pixel(self, y, x, w, kernel)  # np.ones(w)/w)
+
+            scores = [_symmetry_score_for_pixel(self, yy, x, w, kernel) for yy in range(y-4,y+4+1)]  # np.ones(w)/w)
+            #print np.array(scores)
+            score = np.average(scores)
+            #print score
             # score += _symmetry_score_for_pixel(self,y+1, x, w, kernel)# np.ones(w)/w)
             # score += _symmetry_score_for_pixel(self,y-1, x, w, kernel)# np.ones(w)/w)
 
@@ -359,7 +446,7 @@ class PyramidLevel(object):
                     if distance < min_distance:
                         min_distance = distance
             feature._locality = min_distance
-        self._features = [feature for feature in features if feature._locality > 10]
+        self._features =[feature for feature in features if feature._locality > 2]
         print len(features), len(self._features)
 
     def show_features(self, title=""):
