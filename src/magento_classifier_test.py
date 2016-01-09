@@ -31,8 +31,27 @@ image_loader = ImageLoader(data_path=data_path)
 image_files = image_loader.get_image_files()
 
 train_images = image_files['train']
-train_images = ['../data/train/2nd1.jpg']#,'../data/train/2nd2.jpg','../data/train/2nd3.jpg','../data/train/2nd4.jpg','../data/train/2nd5.jpg']
+
+train_images = ['../data/train/2nd1.jpg']
 test_image = '../data/train/2nd2.jpg'
+
+# train_images = ['../data/train/2nd2.jpg']
+# test_image = '../data/train/2nd3.jpg'
+# train_images = ['../data/train/3tor1.jpg']
+# test_image = '../data/train/3tor2.jpg'
+# #
+# train_images = ['../data/train/2nd3.jpg']
+# test_image = '../data/train/2nd4.jpg'
+#
+# train_images = ['../data/train/2nd4.jpg']
+# test_image = '../data/train/2nd5.jpg'
+#
+#
+# train_images = ['../data/train/2nd5.jpg']
+# test_image = '../data/train/2nd1.jpg'
+#,'../data/train/2nd2.jpg','../data/train/2nd3.jpg','../data/train/2nd4.jpg','../data/train/2nd5.jpg']
+
+
 train_labels = make_labels(train_images)
 test_label = make_label(test_image)
 
