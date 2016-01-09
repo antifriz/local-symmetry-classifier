@@ -17,6 +17,7 @@ def _preprocess_image(image, max_width=640, max_height=480):
         raise Exception('Passed obj should be string or numpy array')
             
     factor = 1
+    print image.shape[0]
     if image.shape[0] > max_height:
         factor = max_height / float(image.shape[0])
     if image.shape[1] > max_width:
@@ -110,7 +111,7 @@ def create_descriptors(image):
 
 
 class MagentoClassifier(object):
-    def __init__(self, n_neighbors=10, weights='distance'):
+    def __init__(self, n_neighbors=15, weights='distance'):
         self._classifier = sklearn.neighbors.KNeighborsClassifier(n_neighbors=n_neighbors, weights=weights)
         self._train_image_ids = []
 
@@ -118,7 +119,9 @@ class MagentoClassifier(object):
         descriptors_all = []
         self._train_image_ids = []
         for filename, cnt in zip(filenames, labels):
+            #print filename
             descriptors = create_descriptors(filename)
+            print descriptors.shape
             descriptors_all += list(descriptors)
             self._train_image_ids += list(np.ones(descriptors.shape[0]) * cnt)
 

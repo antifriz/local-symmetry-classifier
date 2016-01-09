@@ -2,14 +2,25 @@ from libSym.image_loader import ImageLoader
 from libSym.magento import MagentoClassifier
 
 def extract_name(path):
-    return path.split('/')[-1].split('.')[0][:-1]
+    return path.split('/')[-1].split('.')[0]
 
 def extract_name_withoutclass(path):
     return path.split('/')[-1].split('.')[0][1:-1]
 
 #extracts the first number from the filename (TODO, zasad samo 1 char fml)
 def make_label(filename):
-    return int(extract_name(filename)[0])
+    fname = extract_name(filename)
+    if (is_number(fname[1])):
+        return int(fname[0:2])
+    else:
+        return int(extract_name(filename)[0])
+
+def is_number(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
     
 
 #Extract the first number from the image name and sets that number as the image class (puts it in labels)
@@ -22,6 +33,8 @@ def make_labels(filenames):
     return labels
 
 data_path = '../data'
+
+
 
 image_loader = ImageLoader(data_path=data_path)
 image_files = image_loader.get_image_files()
@@ -43,4 +56,3 @@ for filename, label in zip(image_files['test'], labels_test):
     print "Testing %s" % (filename)
     print ('OK' if is_ok else '--'), label, '->', razred
 print 'Hit:',i,'Miss:',cnt-i,'Percentage:',str(i / float(cnt) * 100)+"%", 'Database size:',len(image_files['train'])
-
