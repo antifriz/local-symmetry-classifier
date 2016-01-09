@@ -30,72 +30,80 @@ data_path = '../data'
 image_loader = ImageLoader(data_path=data_path)
 image_files = image_loader.get_image_files()
 
-train_images = image_files['train']
+tt = list(image_files['train'] + image_files['test'])
+for rrr in range(0,1000000):
 
-train_images = ['../data/train/2nd1.jpg']
-test_image = '../data/train/2nd2.jpg'
+    t1 = np.random.choice(tt)
+    t2 = np.random.choice(tt)
+    # train_images = ['../data/train/2nd1.jpg']
+    # test_image = '../data/train/2nd3.jpg'
 
-# train_images = ['../data/train/2nd2.jpg']
-# test_image = '../data/train/2nd3.jpg'
-# train_images = ['../data/train/3tor1.jpg']
-# test_image = '../data/train/3tor2.jpg'
-# #
-# train_images = ['../data/train/2nd3.jpg']
-# test_image = '../data/train/2nd4.jpg'
-#
-# train_images = ['../data/train/2nd4.jpg']
-# test_image = '../data/train/2nd5.jpg'
-#
-#
-# train_images = ['../data/train/2nd5.jpg']
-# test_image = '../data/train/2nd1.jpg'
-#,'../data/train/2nd2.jpg','../data/train/2nd3.jpg','../data/train/2nd4.jpg','../data/train/2nd5.jpg']
+    # train_images = ['../data/train/2nd2.jpg']
+    # test_image = '../data/train/2nd3.jpg'
 
-
-train_labels = make_labels(train_images)
-test_label = make_label(test_image)
-
-train_images = map(lambda x: Image(x), train_images)
-#[train_image.show() for train_image in train_images]
-
-# for train_image in train_images:
-#     train_image.show_features()
+    train_images = [t1]
+    test_image = t2
+    #train_images = ['../data/train/3tor1.jpg']
+    #test_image = '../data/train/3tor2.jpg'
+    # #
+    # train_images = ['../data/train/2nd3.jpg']
+    # test_image = '../data/train/2nd4.jpg'
+    #
+    # train_images = ['../data/train/2nd4.jpg']
+    # test_image = '../data/train/2nd5.jpg'
+    #
+    #
+    # train_images = ['../data/train/2nd5.jpg']
+    # test_image = '../data/train/2nd1.jpg'
+    #,'../data/train/2nd2.jpg','../data/train/2nd3.jpg','../data/train/2nd4.jpg','../data/train/2nd5.jpg']
 
 
+    print train_images
+    print test_image
+    train_labels = make_labels(train_images)
+    test_label = make_label(test_image)
 
-buildings_images = {}
-for label, train_image in zip(train_labels, train_images):
-    if label not in buildings_images:
-        buildings_images.update({label: []})
-    buildings_images[label].append(train_image)
+    train_images = map(lambda x: Image(x), train_images)
+    #[train_image.show() for train_image in train_images]
 
-buildings = []
-for identifier, building_images in buildings_images.iteritems():
-    buildings.append(Building(identifier, building_images))
+    # for train_image in train_images:
+    #     train_image.show_features()
 
 
 
-mc = MagentoClassifier()
-mc.fit(buildings)
+    buildings_images = {}
+    for label, train_image in zip(train_labels, train_images):
+        if label not in buildings_images:
+            buildings_images.update({label: []})
+        buildings_images[label].append(train_image)
 
-mc.predict(Image(test_image))
+    buildings = []
+    for identifier, building_images in buildings_images.iteritems():
+        buildings.append(Building(identifier, building_images))
+
+
+
+    mc = MagentoClassifier()
+    mc.fit(buildings)
+
+    mc.predict(Image(test_image))
 
 
 
 
-#
-#
-#
-# i = 0
-# cnt = 0
-# labels_test = make_labels(image_files['test'])
-# for filename, label in zip(image_files['test'], labels_test):
-#     razred = mc.predict(filename)
-#     is_ok = razred == label
-#     if is_ok:
-#         i += 1
-#     cnt += 1
-#     print "Testing %s" % (filename)
-#     print ('OK' if is_ok else '--'), label, '->', razred
-# print 'Hit:', i, 'Miss:', cnt - i, 'Percentage:', str(i / float(cnt) * 100) + "%", 'Database size:', len(
-#         image_files['train'])
+    #
+    #
+    #
+    # i = 0
+    # cnt = 0
+    # labels_test = make_labels(image_files['test'])
+    # for filename, label in zip(image_files['test'], labels_test):
+    #     razred = mc.predict(filename)
+    #     is_ok = razred == label
+    #     if is_ok:
+    #         i += 1
+    #     cnt += 1
+    #     print "Testing %s" % (filename)
+    #     print ('OK' if is_ok else '--'), label, '->', razred
+    # print 'Hit:', i, 'Miss:', cnt - i, 'Percentage:', str(i / float(cnt) * 100) + "%", 'Database size:', len(
+    #         image_files['train'])
