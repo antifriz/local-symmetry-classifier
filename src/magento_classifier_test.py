@@ -12,7 +12,10 @@ def extract_name_withoutclass(path):
 
 # extracts the first number from the filename (TODO, zasad samo 1 char fml)
 def make_label(filename):
-    return int(extract_name(filename)[0])
+    try:
+        return int(extract_name(filename)[0])
+    except:
+        return 0
 
 
 # Extract the first number from the image name and sets that number as the image class (puts it in labels)
@@ -33,16 +36,16 @@ image_files = image_loader.get_image_files()
 tt = list(image_files['train'] + image_files['test'])
 for rrr in range(0,1000000):
 
-    t1 = np.random.choice(tt)
-    t2 = np.random.choice(tt)
-    # train_images = ['../data/train/2nd1.jpg']
-    # test_image = '../data/train/2nd3.jpg'
+    # t1 = np.random.choice(tt)
+    # t2 = np.random.choice(tt)
+    train_images = ['../data/train/2nd2.jpg','../data/train/2nd2.jpg']
+    test_image = '../data/train/2nd3.jpg'
 
     # train_images = ['../data/train/2nd2.jpg']
     # test_image = '../data/train/2nd3.jpg'
 
-    train_images = [t1]
-    test_image = t2
+    # train_images = [t1]
+    # test_image = t2
     #train_images = ['../data/train/3tor1.jpg']
     #test_image = '../data/train/3tor2.jpg'
     # #
@@ -107,3 +110,4 @@ for rrr in range(0,1000000):
     #     print ('OK' if is_ok else '--'), label, '->', razred
     # print 'Hit:', i, 'Miss:', cnt - i, 'Percentage:', str(i / float(cnt) * 100) + "%", 'Database size:', len(
     #         image_files['train'])
+    break
