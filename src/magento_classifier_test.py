@@ -38,7 +38,7 @@ for rrr in range(0,1000000):
 
     # t1 = np.random.choice(tt)
     # t2 = np.random.choice(tt)
-    train_images = ['../data/misc/sim.jpg','../data/train/2nd2.jpg','../data/train/2nd2.jpg']
+    train_images = ['../data/train/2nd1.jpg']
     test_image = '../data/train/2nd3.jpg'
 
     # train_images = ['../data/train/2nd2.jpg']
