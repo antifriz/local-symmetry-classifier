@@ -324,7 +324,7 @@ class Feature(object):
         self._score = score
         self._descriptor = None
         self._locality = None
-        self._calculate_descriptor()
+        #self._calculate_descriptor()
 
     def get_descriptor(self):
         """
@@ -481,15 +481,15 @@ class PyramidLevel(object):
                 allowed_area, structure=right_test)
 
         self._data = (sobel_angles, sobel_norms, allowed_area)
-        # plt.subplot(231), plt.imshow(self._grayscale, cmap='gray')
-        # plt.subplot(232), plt.imshow(self._allowed_area, cmap='gray')
-        # plt.subplot(233), plt.imshow(sobel_norms, cmap='gray')
-        # plt.subplot(234), plt.imshow(sobel_angles, cmap='gray')
-        # plt.subplot(235), plt.imshow(sobel_x, cmap='gray')
-        # plt.subplot(236), plt.imshow(sobel_y, cmap='gray'), plt.show()
-        # #
-        # print np.min(sobel_x), np.max(sobel_x), np.min(sobel_y), np.max(sobel_y)
+        plt.subplot(231), plt.imshow(self._grayscale, cmap='gray')
+        plt.subplot(232), plt.imshow(allowed_area, cmap='gray')
+        plt.subplot(233), plt.imshow(sobel_norms, cmap='gray')
+        plt.subplot(234), plt.imshow(sobel_angles, cmap='gray')
+        plt.subplot(235), plt.imshow(sobel_x, cmap='gray')
+        plt.subplot(236), plt.imshow(sobel_y, cmap='gray'), plt.show()
         #
+        print np.min(sobel_x), np.max(sobel_x), np.min(sobel_y), np.max(sobel_y)
+
         # self._matrix
         # exit(0)
 
@@ -513,7 +513,7 @@ class PyramidLevel(object):
         h = Feature.HEIGHT
 
         DISALLOWED_AREA_CONSTANT = 10e10
-        DIFFERENCE_THRESHOLD = 1
+        DIFFERENCE_THRESHOLD = 0.1
 
         w = Feature.WIDTH
         h = Feature.HEIGHT
@@ -559,7 +559,7 @@ class PyramidLevel(object):
         # plt.imshow(heatmap_to_showoff, cmap='gray'), plt.show()
 
         minimums = np.array(detect_local_minima(heatmap)).T
-        #img = cv2.cvtColor(pyramid_level._grayscale, cv2.COLOR_GRAY2BGR)
+        img = cv2.cvtColor(self._grayscale, cv2.COLOR_GRAY2BGR)
 
         min_vals = heatmap[minimums[:, 0], minimums[:, 1]]
         argsort_indices = np.argsort(min_vals)
@@ -568,12 +568,15 @@ class PyramidLevel(object):
         minimums = minimums[min_vals < DIFFERENCE_THRESHOLD]
         min_vals= min_vals[min_vals < DIFFERENCE_THRESHOLD]
 
-        #img[minimums[:, 0], minimums[:, 1]] = (0, 0, 255)
+        for xy in minimums:
+            cv2.circle(img,(xy[1],xy[0]),w,(0,0,255))
 
-        #b, g, r = cv2.split(img)
-        #img = cv2.merge([r, g, b])
-        #plt.subplot(121), plt.imshow(img), plt.subplot(122), plt.imshow(allowed_area, 'gray'), plt.show()
-        #print minimums.shape
+        img[minimums[:, 0], minimums[:, 1]] = (0, 0, 255)
+
+        b, g, r = cv2.split(img)
+        img = cv2.merge([r, g, b])
+        plt.subplot(121), plt.imshow(img), plt.subplot(122), plt.imshow(allowed_area, 'gray'), plt.show()
+        print minimums.shape
 
         features_in_level = []
         for x, y in zip(minimums,min_vals):
