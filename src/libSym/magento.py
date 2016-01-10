@@ -17,7 +17,6 @@ import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
 
 
-
 def _preprocess_image(image, max_width=640, max_height=480):
     if type(image) is str:
         image = cv2.imread(image)
@@ -115,53 +114,11 @@ def detect_local_minima(arr):
 
 
 def _get_left(scan_line, x, w):
-    return np.flipud(scan_line[:,x - w:x]).astype(float)
+    return np.flipud(scan_line[:, x - w:x]).astype(float)
 
 
 def _get_right(scan_line, x, w):
-    return scan_line[:,x:x + w].astype(float)
-
-
-def _process_descriptors(pyramid_level, feature):
-    """
-
-    :type pyramid_level: PyramidLevel
-    :type feature:Feature
-    :rtype: np.array
-    """
-    x = feature._x
-    y = feature._y
-    w = Feature.WIDTH
-    h = Feature.HEIGHT
-
-    angles,weights_all,_ = pyramid_level.get_data()
-    scan_lines = angles[y - h: y + h + 1, :]
-    weights = weights_all[y - h: y + h + 1, :]
-    left,right = _get_left(scan_lines,x,w),_get_right(scan_lines,x,w)
-    left_w,right_w= _get_left(weights,x,w),_get_right(weights,x,w)
-
-    #kernel = cv2.getGaussianKernel(w * 2, 0)[:w] * 2
-    #c1, _ = np.meshgrid(kernel, np.zeros(h * 2 + 1))
-
-    sum = left - right
-    sum = np.minimum(sum,360-sum)
-    sum_w = left_w - right_w
-    sum_w = np.minimum(sum_w,360-sum_w)
-
-    avg_line = (sum) / 2
-    avg_line_w = (sum_w) / 2
-
-
-    np.histogram(avg_line,bins=8,weights=sum_w)
-
-
-    raw = (avg_line < np.average(avg_line)).astype(float)
-    # raw *= c1
-    ravel = np.ravel(raw)
-    #assert ravel.shape[0] == (h * 2 + 1) * w, "" + str(ravel.shape) + " " + str((h * 2 + 1) * w)
-    # np.append(ravel,feature.get_global_xy_w()[0])
-    return ravel
-    # return sp.ndimage.interpolation.zoom(raw, 128 / float(w), order=3, mode='constant')
+    return scan_line[:, x:x + w].astype(float)
 
 
 class MagentoClassifier(object):
@@ -182,7 +139,6 @@ class MagentoClassifier(object):
         features_all = [feature for building in buildings for feature in building.get_all_features()]
 
         descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
-        return
         assert len(descriptors_all.shape) == 2
 
         classes_all = np.array(
@@ -199,7 +155,7 @@ class MagentoClassifier(object):
 
         :type image: Image
         """
-        N_NEIGHBORS = 10
+        N_NEIGHBORS = 1
 
         features_all = image.get_all_features()
 
@@ -314,7 +270,7 @@ class MagentoClassifier(object):
 
 
 class Feature(object):
-    WIDTH = 8 # actual width -> 2*WIDTH
+    WIDTH = 8  # actual width -> 2*WIDTH
     HEIGHT = 4  # actual height -> 2*HEIGHT + 1
 
     def __init__(self, pyramid_level, score, x, y):
@@ -324,7 +280,7 @@ class Feature(object):
         self._score = score
         self._descriptor = None
         self._locality = None
-        #self._calculate_descriptor()
+        self._calculate_descriptor()
 
     def get_descriptor(self):
         """
@@ -336,7 +292,56 @@ class Feature(object):
         return self._descriptor
 
     def _calculate_descriptor(self):
-        self._descriptor = _process_descriptors(self.get_pyramid_level(), self)
+        """
+
+        :type pyramid_level: PyramidLevel
+        :type feature:Feature
+        :rtype: np.array
+        """
+
+        x = self._x
+        y = self._y
+        w = Feature.WIDTH
+        h = Feature.HEIGHT
+
+        angles, weights_all, _ = self._pyramid_level.get_data()
+        scan_lines = angles[y - h: y + h + 1, :]
+        weights = weights_all[y - h: y + h + 1, :]
+        left, right = _get_left(scan_lines, x, w), _get_right(scan_lines, x, w)
+        left_w, right_w = _get_left(weights, x, w), _get_right(weights, x, w)
+
+        sum = left - right
+        sum = np.minimum(sum, 360 - sum)
+        sum_w = left_w + right_w
+
+        avg_line = (sum) / 2
+        avg_line_w = (sum_w) / 2
+
+
+        self._descriptor = avg_line.ravel()
+        return
+
+        #print avg_line[:, :]
+        half = avg_line.shape[1] / 2.0
+        h1= np.histogram(avg_line[:, :half], bins=8,range=(-180,180), weights=avg_line_w[:,:half],density=True)[0]
+        h2= np.histogram(avg_line[:, half:], bins=8,range=(-180,180), weights=avg_line_w[:,half:],density=True)[0]
+
+        #print h1
+        #print h2
+
+        vals = np.append(h1,h2)
+        self._descriptor = vals
+
+        #print vals
+        #
+        # exit(0)
+        # raw = (avg_line < np.average(avg_line)).astype(float)
+        # # raw *= c1
+        # ravel = np.ravel(raw)
+        # # assert ravel.shape[0] == (h * 2 + 1) * w, "" + str(ravel.shape) + " " + str((h * 2 + 1) * w)
+        # # np.append(ravel,feature.get_global_xy_w()[0])
+        # self._descriptor = ravel
+        # # return sp.ndimage.interpolation.zoom(raw, 128 / float(w), order=3, mode='constant')
 
     def get_pyramid_level(self):
         """
@@ -354,64 +359,64 @@ class Feature(object):
         # cv2.circle(image, (self._x, self._y), 1, (0, 0, 255), thickness=2)
 
     def show(self, title=""):
-        # img = self.get_pyramid_level().get_data().copy()
-        # self.draw_me(img)
-        # cv2.imshow(title if title is not "" else self.__repr__(), img)
-        # cv2.waitKey()
-        matrix = self.get_pyramid_level().get_data()
-        neigh = 4
-        scan_lines = matrix[self._y - neigh: self._y + neigh + 1, :]
-
-        area = scan_lines[:, self._x - self._w:self._x + self._w]
-
-        left = area[:, :area.shape[1] / 2]
-        right = area[:, area.shape[1] / 2:]
-
-        right = np.fliplr(right)
-
-        aaaaaa = (left / 2 + right / 2)
-
-        # cv2.imshow("sl",cv2.resize(scan_lines[:,x-w:x+w],dsize=(0,0),fx=10,fy=10,interpolation=cv2.INTER_NEAREST))
-        # k = cv2.waitKey(0)
-        # if k == 27:         # wait for ESC key to exit
-        #     cv2.destroyAllWindows()
-        #     exit(0)
-
-
-        avg = np.average(area)
-        # print avg
-        # avg = np.tile(avg, (area.shape[1], 1)).T
-        # print avg
-
-
-
-        area2 = (np.bitwise_not(area > avg)).astype(np.uint8) * 255
-
-        resize = lambda img: cv2.resize(img, dsize=(0, 0), fx=10, fy=10, interpolation=cv2.INTER_NEAREST)
-
-        descriptor = self.get_descriptor()
-        desc = np.reshape(descriptor, (area.shape[0], len(descriptor) / area.shape[0]))
-        desc = (desc - desc.min()) / (desc.min() - desc.max()) * 255
-        desc = desc.astype(np.uint8)
-
-        area = cv2.cvtColor(area, cv2.COLOR_GRAY2BGR)
-        area2 = cv2.cvtColor(area2, cv2.COLOR_GRAY2BGR)
-        desc = cv2.cvtColor(desc.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
-        padding = np.zeros((area.shape[0], 5, 3))
-        padding[:] = (0, 0, 255)
-
-        large_image = np.hstack((padding, area2, padding, desc))
-
-        large_image[:area.shape[0], :area.shape[1], :] = area
-
-        cv2.imshow(title, resize(area))
-        cv2.imshow(title + "-aaaaa", resize(aaaaaa))
-        cv2.imshow(title + "-binary", resize(large_image))
-        # cv2.imshow(title +"-descriptor", resize(desc))
-        # k = cv2.waitKey(0)
-        # if k == 27:         # wait for ESC key to exit
-        #     cv2.destroyAllWindows()
-        #     exit(0)
+        pass
+        # # img = self.get_pyramid_level().get_data().copy()
+        # # self.draw_me(img)
+        # # cv2.imshow(title if title is not "" else self.__repr__(), img)
+        # # cv2.waitKey()
+        # matrix = self.get_pyramid_level().get_data()
+        # scan_lines = matrix[self._y - Feature.HEIGHT: self._y + Feature.HEIGHT + 1, :]
+        #
+        # area = scan_lines[:, self._x -Feature.WIDTH:self._x + Feature.WIDTH]
+        #
+        # left = area[:, :area.shape[1] / 2]
+        # right = area[:, area.shape[1] / 2:]
+        #
+        # right = np.fliplr(right)
+        #
+        # aaaaaa = (left / 2 + right / 2)
+        #
+        #     # cv2.imshow("sl",cv2.resize(scan_lines[:,x-w:x+w],dsize=(0,0),fx=10,fy=10,interpolation=cv2.INTER_NEAREST))
+        #     # k = cv2.waitKey(0)
+        #     # if k == 27:         # wait for ESC key to exit
+        #     #     cv2.destroyAllWindows()
+        #     #     exit(0)
+        #
+        #
+        # avg = np.average(area)
+        #     # print avg
+        #     # avg = np.tile(avg, (area.shape[1], 1)).T
+        #     # print avg
+        #
+        #
+        #
+        # area2 = (np.bitwise_not(area > avg)).astype(np.uint8) * 255
+        #
+        # resize = lambda img: cv2.resize(img, dsize=(0, 0), fx=10, fy=10, interpolation=cv2.INTER_NEAREST)
+        #
+        # descriptor = self.get_descriptor()
+        # desc = np.reshape(descriptor, (area.shape[0], len(descriptor) / area.shape[0]))
+        # desc = (desc - desc.min()) / (desc.min() - desc.max()) * 255
+        # desc = desc.astype(np.uint8)
+        #
+        # area = cv2.cvtColor(area, cv2.COLOR_GRAY2BGR)
+        # area2 = cv2.cvtColor(area2, cv2.COLOR_GRAY2BGR)
+        # desc = cv2.cvtColor(desc.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
+        # padding = np.zeros((area.shape[0], 5, 3))
+        # padding[:] = (0, 0, 255)
+        #
+        # large_image = np.hstack((padding, area2, padding, desc))
+        #
+        # large_image[:area.shape[0], :area.shape[1], :] = area
+        #
+        # cv2.imshow(title, resize(area))
+        # cv2.imshow(title + "-aaaaa", resize(aaaaaa))
+        # cv2.imshow(title + "-binary", resize(large_image))
+        #     # cv2.imshow(title +"-descriptor", resize(desc))
+        #     # k = cv2.waitKey(0)
+        #     # if k == 27:         # wait for ESC key to exit
+        #     #     cv2.destroyAllWindows()
+        #     #     exit(0)
 
     def __repr__(self):
         return "{xyw=(" + str(self._x) + "," + str(self._y) + "," + str(self._w) + "), score=" + str(
@@ -419,7 +424,7 @@ class Feature(object):
 
     def get_global_xy_w(self):
         scale = self.get_pyramid_level().get_scale()
-        return np.array([int(round(self._x / scale)), int(round(self._y / scale))]), int(round(self._w / scale))
+        return np.array([int(round(self._x / scale)), int(round(self._y / scale))]), int(round(Feature.WIDTH / scale))
 
 
 class PyramidLevel(object):
@@ -433,7 +438,6 @@ class PyramidLevel(object):
         self._image = image
         self._grayscale = matrix
         self._data = None
-        self._allowed_area = None
         self._features = None
         self._scale = scale
 
@@ -444,11 +448,6 @@ class PyramidLevel(object):
         if self._data is None:
             self._generate_data()
         return self._data
-
-    def get_allowed_area(self):
-        if self._allowed_area is None:
-            self._generate_data()
-        return self._allowed_area
 
     def _generate_data(self):
         NORM_LIMIT = 250
@@ -469,7 +468,6 @@ class PyramidLevel(object):
 
         sobel_angles = np.angle(sobel, deg=True).real
 
-
         allowed_area = sobel_norms == 1
 
         ones = np.ones((Feature.HEIGHT * 2 + 1, Feature.WIDTH - 1))
@@ -481,12 +479,12 @@ class PyramidLevel(object):
                 allowed_area, structure=right_test)
 
         self._data = (sobel_angles, sobel_norms, allowed_area)
-        plt.subplot(231), plt.imshow(self._grayscale, cmap='gray')
-        plt.subplot(232), plt.imshow(allowed_area, cmap='gray')
-        plt.subplot(233), plt.imshow(sobel_norms, cmap='gray')
-        plt.subplot(234), plt.imshow(sobel_angles, cmap='gray')
-        plt.subplot(235), plt.imshow(sobel_x, cmap='gray')
-        plt.subplot(236), plt.imshow(sobel_y, cmap='gray'), plt.show()
+        # plt.subplot(231), plt.imshow(self._grayscale, cmap='gray')
+        # plt.subplot(232), plt.imshow(allowed_area, cmap='gray')
+        # plt.subplot(233), plt.imshow(sobel_norms, cmap='gray')
+        # plt.subplot(234), plt.imshow(sobel_angles, cmap='gray')
+        # plt.subplot(235), plt.imshow(sobel_x, cmap='gray')
+        # plt.subplot(236), plt.imshow(sobel_y, cmap='gray'), plt.show()
         #
         print np.min(sobel_x), np.max(sobel_x), np.min(sobel_y), np.max(sobel_y)
 
@@ -513,7 +511,7 @@ class PyramidLevel(object):
         h = Feature.HEIGHT
 
         DISALLOWED_AREA_CONSTANT = 10e10
-        DIFFERENCE_THRESHOLD = 0.1
+        DIFFERENCE_THRESHOLD = 0.075
 
         w = Feature.WIDTH
         h = Feature.HEIGHT
@@ -523,9 +521,9 @@ class PyramidLevel(object):
         heatmap = np.ones(angles.shape) * DISALLOWED_AREA_CONSTANT
 
         # cv2.imshow("nja", img)
-        for y in range(h,angles.shape[0]-h):
-            scan_line = angles[y-h:y+h+1, :]
-            weight_line = norms[y-h:y+h+1, :]
+        for y in range(h, angles.shape[0] - h):
+            scan_line = angles[y - h:y + h + 1, :]
+            weight_line = norms[y - h:y + h + 1, :]
             for x in range(w, angles.shape[1] - w):
                 if allowed_area[y, x]:
                     trace_scan_line = _get_left(scan_line, x, w) + _get_right(scan_line, x, w)
@@ -552,8 +550,9 @@ class PyramidLevel(object):
                     #     print np.round(_get_right(weight_line, x, w),2)
 
         filtered_heatmap = heatmap[heatmap != DISALLOWED_AREA_CONSTANT]
-        print np.max(filtered_heatmap), np.min(filtered_heatmap), np.average(filtered_heatmap), np.std(
-            filtered_heatmap), heatmap.shape
+        if len(filtered_heatmap)>0:
+            print np.max(filtered_heatmap), np.min(filtered_heatmap), np.average(filtered_heatmap), np.std(
+                    filtered_heatmap), heatmap.shape
         # heatmap_to_showoff = heatmap.copy()
         # heatmap_to_showoff[heatmap==DISALLOWED_AREA_CONSTANT] =np.average(heatmap_to_showoff[heatmap_to_showoff!=DISALLOWED_AREA_CONSTANT])
         # plt.imshow(heatmap_to_showoff, cmap='gray'), plt.show()
@@ -566,26 +565,26 @@ class PyramidLevel(object):
         minimums = minimums[argsort_indices]
         min_vals = min_vals[argsort_indices]
         minimums = minimums[min_vals < DIFFERENCE_THRESHOLD]
-        min_vals= min_vals[min_vals < DIFFERENCE_THRESHOLD]
+        min_vals = min_vals[min_vals < DIFFERENCE_THRESHOLD]
 
         for xy in minimums:
-            cv2.circle(img,(xy[1],xy[0]),w,(0,0,255))
+            cv2.circle(img, (xy[1], xy[0]), w, (0, 0, 255))
 
         img[minimums[:, 0], minimums[:, 1]] = (0, 0, 255)
 
         b, g, r = cv2.split(img)
         img = cv2.merge([r, g, b])
-        plt.subplot(121), plt.imshow(img), plt.subplot(122), plt.imshow(allowed_area, 'gray'), plt.show()
+        # plt.subplot(121), plt.imshow(img), plt.subplot(122), plt.imshow(allowed_area, 'gray'), plt.show()
         print minimums.shape
 
         features_in_level = []
-        for x, y in zip(minimums,min_vals):
-            feature = Feature(self, min_vals, x, y)
+        for (y, x), min_val in zip(minimums, min_vals):
+            feature = Feature(self, min_val, x, y)
             features_in_level.append(feature)
         if len(minimums) == 0:
             self._features = []
             return
-        self._features= features_in_level
+        self._features = features_in_level
         # distance_matrix = cdist(minimums, minimums, 'euclidean')
         #
         # for i, (feature, xy) in enumerate(zip(features_in_level, minimums)):
