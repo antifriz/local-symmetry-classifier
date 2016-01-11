@@ -9,6 +9,8 @@ import scipy.ndimage.morphology as morphology
 from os import walk
 from os.path import join, basename
 
+LOG_LEVEL = 4
+
 
 def detect_local_minima(arr):
     neighborhood = morphology.generate_binary_structure(len(arr.shape), 2)
@@ -33,19 +35,28 @@ def _print_sth(label, strng):
 
 
 def print_err(str):
-    _print_sth("ERR", str)
+    if LOG_LEVEL >= 1:
+        _print_sth("ERR", str)
 
 
 def print_warn(str):
-    _print_sth("WARNING", str)
+    if LOG_LEVEL >= 2:
+        _print_sth("WARNING", str)
 
 
 def print_info(str):
-    _print_sth("INFO", str)
+    if LOG_LEVEL >= 3:
+        _print_sth("INFO", str)
 
 
 def print_verbose(str):
-    _print_sth("VERBOSE", str)
+    if LOG_LEVEL >= 4:
+        _print_sth("VERBOSE", str)
+
+
+def print_result(str):
+    if LOG_LEVEL >= 0:
+        _print_sth("RESULT", str)
 
 
 class MagentoClassifier(object):
@@ -65,7 +76,7 @@ class MagentoClassifier(object):
         :rtype: float
         """
         ult_score = 0
-        for iter in range(1,iterations+1):
+        for iter in range(1, iterations + 1):
             print_info("Starting testing iteration " + str(iter) + "/" + str(iterations))
             train_images, test_images = MagentoClassifier._test_train_split_buildings(buildings,
                                                                                       train_images_per_building=train_images_per_building,
@@ -75,12 +86,12 @@ class MagentoClassifier(object):
             mc = MagentoClassifier(n_neighbors=n_neighbors, weights=weights)
             mc.fit(train_images)
             score = mc.score(test_images)
-            print_info("Iteration " + str(iter) + "/" + str(iterations) + " score is " + str(score))
+            print_result("Iteration " + str(iter) + "/" + str(iterations) + " score is " + str(score))
             ult_score += score
-            print_info("Ultimate score so far is " + str(ult_score/iter))
+            print_info("Ultimate score so far is " + str(ult_score / iter))
         score_iterations = ult_score / iterations
 
-        print_info("Ultimate score is " + str(score_iterations))
+        print_result("Ultimate score is " + str(score_iterations))
         return score_iterations
 
     @staticmethod
@@ -184,8 +195,6 @@ class MagentoClassifier(object):
         print_info("Starting scoring process")
         y_pred = self.predict(images)
         y_true = [image.get_building().get_identifier() for image in images]
-        print y_pred
-        print y_true
         return np.sum((np.array(y_true) - np.array(y_pred)) == 0) / float(len(y_pred))
 
     def show_match(self, image_test, matches, distances):
