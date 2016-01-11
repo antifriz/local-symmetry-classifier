@@ -1,3 +1,5 @@
+from multiprocessing.pool import Pool
+
 import scipy as sp
 import sklearn
 import sklearn.naive_bayes
@@ -7,6 +9,7 @@ import numpy as np
 import random
 import scipy.ndimage as ndimage
 import scipy.ndimage.filters as filters
+from multiprocessing import cpu_count
 from scipy.spatial.distance import euclidean, cdist
 from scipy.ndimage.interpolation import zoom
 from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier, NearestNeighbors
@@ -161,6 +164,7 @@ class MagentoClassifier(object):
         """
         ult_score = 0
         for iter in range(iterations):
+            print_info("Starting testing iteration "+str(iter)+"/"+str(iterations))
             train_images, test_images = MagentoClassifier._test_train_split_buildings(buildings,
                                                                                       train_images_per_building=train_images_per_building,
                                                                                       test_images_per_building=test_images_per_building,
@@ -168,8 +172,13 @@ class MagentoClassifier(object):
                                                                                       seed=seed)
             mc = MagentoClassifier(n_neighbors=n_neighbors, weights=weights)
             mc.fit(train_images)
-            ult_score += mc.score(test_images)
-        return ult_score / iterations
+            score = mc.score(test_images)
+            print_info("Iteration "+str(iter)+"/"+str(iterations) + " score is "+str(score))
+            ult_score += score
+        score_iterations = ult_score / iterations
+
+        print_info("Ultimate score is "+str(score_iterations))
+        return score_iterations
 
     @staticmethod
     def _test_train_split_buildings(buildings, test_images_per_building=1, train_images_per_building=-1, class_count=-1,
@@ -185,12 +194,15 @@ class MagentoClassifier(object):
         all_trains, all_tests = [], []
         all_classes = 0
         for train, test in mapped:
+            if class_count!=-1 and all_classes==class_count:
+                break
             if (len(train) < train_images_per_building) or (len(test) < test_images_per_building):
-                assert class_count == -1, "Database too small"
+                pass
             else:
                 all_trains.extend(train)
                 all_tests.extend(test)
                 all_classes += 1
+
         if all_classes != class_count:
             assert class_count == -1, "Database too small"
             print_warn("There are not enough samples for all classes")
@@ -213,6 +225,7 @@ class MagentoClassifier(object):
 
         :type images: list[Images]
         """
+        print_info("Starting fitting process")
         assert all([image.get_building() is not None for image in images])
 
         features_all = [feature for image in images for feature in image.get_all_features()]
@@ -234,6 +247,7 @@ class MagentoClassifier(object):
         :type images: list[Image]
         :rtype: list[int]
         """
+        print_info("Starting predict process")
         results = []
         for image in images:
             features_all = image.get_all_features()
@@ -254,6 +268,7 @@ class MagentoClassifier(object):
             #    np.argmax(chances)
             # else:
             #    raise Exception('Unknown predict method')
+            print_info("Image "+str(image)+ " predicted: "+str(result) + ", real: " + str(image.get_building().get_identifier()))
         return results
 
     def score(self, images):
@@ -261,9 +276,12 @@ class MagentoClassifier(object):
         :type images: list[Image]
         :rtype: float
         """
+        print_info("Starting scoring process")
         y_pred = self.predict(images)
         y_true = [image.get_building().get_identifier() for image in images]
-        return zero_one_loss(y_true, y_pred)
+        print y_pred
+        print y_true
+        return len(y_pred) - zero_one_loss(y_true, y_pred)
 
     def show_match(self, image_test, matches, distances):
         """
@@ -660,6 +678,9 @@ class PyramidLevel(object):
                     trace_scan_line *= trace_weight_line  # * kernel[:,:,0]
                     dot = np.sum(trace_scan_line)
                     trace_weight_line_sum = np.sum(trace_weight_line)
+                    if trace_weight_line_sum ==0:
+                        print_warn("trace_weight_line_sum is 0")
+                        continue
                     dot /= trace_weight_line_sum
                     dot /= len(trace_scan_line)
                     maximal_trace_weight_line_sum = trace_weight_line.shape[0] * trace_weight_line.shape[1]
@@ -869,6 +890,7 @@ class Image(object):
         :rtype: list[Feature]
         """
         return [feature for pyramid_level in self.get_pyramid() for feature in pyramid_level.get_features()]
+
 
 
 class Building(object):
