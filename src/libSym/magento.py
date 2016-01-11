@@ -1,121 +1,21 @@
 import os
-import pickle
-from multiprocessing.pool import Pool
-
 import scipy as sp
-import sklearn
-import sklearn.naive_bayes
-import itertools
 import cv2
 import numpy as np
 import random
-import scipy.ndimage as ndimage
-import scipy.ndimage.filters as filters
-from multiprocessing import cpu_count
-from scipy.spatial.distance import euclidean, cdist
-from scipy.ndimage.interpolation import zoom
-from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier, NearestNeighbors
-
-from sklearn.preprocessing import normalize
-from matplotlib import pyplot as plt
-from sklearn.metrics import zero_one_loss
-
+from sklearn.neighbors import KNeighborsClassifier
 import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
-
-
-def _preprocess_image(image, max_width=640, max_height=480):
-    if type(image) is str:
-        image = cv2.imread(image)
-    elif type(image) is not np.ndarray:
-        raise Exception('Passed obj should be string or numpy array')
-
-    factor = 1
-    if image.shape[0] > max_height:
-        factor = max_height / float(image.shape[0])
-    if image.shape[1] > max_width:
-        f2 = max_width / float(image.shape[1])
-        factor = f2 if f2 < factor else factor
-    # print 'factor',factor
-    image = cv2.resize(image, (0, 0), fx=factor, fy=factor,
-                       interpolation=cv2.INTER_CUBIC) if factor < 1 else image
-    if len(image.shape) != 2:
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    return image
-
-
-def _find_best_k(harris_output, desired_feature_count, propose_k=0.1, tolerance=0.1):
-    min_k = 0
-    k = propose_k
-    max_k = 1
-    max_val = harris_output.max()
-    while True:
-        feature_count = np.sum(harris_output > k * max_val)
-
-        # print min_k,k,max_k,feature_count
-        if feature_count > desired_feature_count * (1 + tolerance):
-            min_k = k
-        elif feature_count < desired_feature_count * (1 - tolerance):
-            max_k = k
-        else:
-            break
-        if max_k - min_k < 0.001:
-            break
-        k = (max_k + min_k) / 2
-    return k
-
-
-def _symmetry_score_for_pixel(pyramid_level, y, x, w, kernel):
-    """
-
-    :type pyramid_level: PyramidLevel
-    """
-    scan_line = pyramid_level.get_data()[y, :]
-    left = scan_line[x - w:x].astype(float)
-    right = np.flipud(scan_line[x:x + w]).astype(float)
-    diff = np.abs(left - right)
-    return diff.dot(kernel)
-
-
-def _unique_rows(a):
-    order = np.lexsort(a.T)
-    a = a[order]
-    diff = np.diff(a, axis=0)
-    ui = np.ones(len(a), 'bool')
-    ui[1:] = (diff != 0).any(axis=1)
-    return a[ui]
+from os import walk
+from os.path import join, basename
 
 
 def detect_local_minima(arr):
-    # http://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-array/3689710#3689710
-    """
-    Takes an array and detects the troughs using the local maximum filter.
-    Returns a boolean mask of the troughs (i.e. 1 when
-    the pixel's value is the neighborhood maximum, 0 otherwise)
-    """
-    # define an connected neighborhood
-    # http://www.scipy.org/doc/api_docs/SciPy.ndimage.morphology.html#generate_binary_structure
     neighborhood = morphology.generate_binary_structure(len(arr.shape), 2)
-    # apply the local minimum filter; all locations of minimum value
-    # in their neighborhood are set to 1
-    # http://www.scipy.org/doc/api_docs/SciPy.ndimage.filters.html#minimum_filter
     local_min = (filters.minimum_filter(arr, footprint=neighborhood) == arr)
-    # local_min is a mask that contains the peaks we are
-    # looking for, but also the background.
-    # In order to isolate the peaks we must remove the background from the mask.
-    #
-    # we create the mask of the background
     background = (arr == 0)
-    #
-    # a little technicality: we must erode the background in order to
-    # successfully subtract it from local_min, otherwise a line will
-    # appear along the background border (artifact of the local minimum filter)
-    # http://www.scipy.org/doc/api_docs/SciPy.ndimage.morphology.html#binary_erosion
     eroded_background = morphology.binary_erosion(
             background, structure=neighborhood, border_value=1)
-    #
-    # we obtain the final mask, containing only peaks,
-    # by removing the background from the local_min mask
     detected_minima = local_min - eroded_background
     return np.where(detected_minima)
 
@@ -165,7 +65,7 @@ class MagentoClassifier(object):
         :rtype: float
         """
         ult_score = 0
-        for iter in range(iterations):
+        for iter in range(1,iterations+1):
             print_info("Starting testing iteration " + str(iter) + "/" + str(iterations))
             train_images, test_images = MagentoClassifier._test_train_split_buildings(buildings,
                                                                                       train_images_per_building=train_images_per_building,
@@ -177,6 +77,7 @@ class MagentoClassifier(object):
             score = mc.score(test_images)
             print_info("Iteration " + str(iter) + "/" + str(iterations) + " score is " + str(score))
             ult_score += score
+            print_info("Ultimate score so far is " + str(ult_score/iter))
         score_iterations = ult_score / iterations
 
         print_info("Ultimate score is " + str(score_iterations))
@@ -193,6 +94,7 @@ class MagentoClassifier(object):
         mapped = map(lambda building: building.get_test_train_images(train_count=train_images_per_building,
                                                                      test_count=test_images_per_building, seed=seed),
                      buildings)
+        random.shuffle(mapped)
         all_trains, all_tests = [], []
         all_classes = 0
         for train, test in mapped:
@@ -271,7 +173,7 @@ class MagentoClassifier(object):
             # else:
             #    raise Exception('Unknown predict method')
             print_info("Image " + str(image) + " predicted: " + str(result) + ", real: " + str(
-                image.get_building().get_identifier()))
+                    image.get_building().get_identifier()))
         return results
 
     def score(self, images):
@@ -284,7 +186,7 @@ class MagentoClassifier(object):
         y_true = [image.get_building().get_identifier() for image in images]
         print y_pred
         print y_true
-        return 1-zero_one_loss(y_true, y_pred)/float(len(y_pred))
+        return np.sum((np.array(y_true) - np.array(y_pred)) == 0) / float(len(y_pred))
 
     def show_match(self, image_test, matches, distances):
         """
@@ -648,14 +550,14 @@ class PyramidLevel(object):
 
         FEATURE_CACHE_PATH = '../data/cache'
 
-        cache_file_name = str(self.get_image().__repr__() +str(self.get_scale()))+".cache"
+        cache_file_name = str(self.get_image().__repr__() + str(self.get_scale())) + ".cache"
 
-        cache_path = os.path.abspath(join(FEATURE_CACHE_PATH,cache_file_name))
+        cache_path = os.path.abspath(join(FEATURE_CACHE_PATH, cache_file_name))
 
         try:
-            data = np.load(cache_path+'.npy')
-            minimums = data[:,:2]
-            min_vals = data[:,2]
+            data = np.load(cache_path + '.npy')
+            minimums = data[:, :2]
+            min_vals = data[:, 2]
         except:
             w = Feature.WIDTH
             h = Feature.HEIGHT
@@ -747,7 +649,7 @@ class PyramidLevel(object):
             img = cv2.merge([r, g, b])
             # plt.subplot(121), plt.imshow(img), plt.subplot(122), plt.imshow(allowed_area, 'gray'), plt.show()
             # print minimums.shape
-            np.save(cache_path,np.hstack((minimums,min_vals[:,np.newaxis])))
+            np.save(cache_path, np.hstack((minimums, min_vals[:, np.newaxis])))
 
         features_in_level = []
         for (y, x), min_val in zip(minimums, min_vals):
@@ -797,7 +699,7 @@ class Image(object):
         self._image_processed = None
         self._building = None  # type: Building
         self._pyramid = None
-        self._all_features = None #type: list[Feature]
+        self._all_features = None  # type: list[Feature]
 
     def __repr__(self):
         return (str(self._building.get_name()) if self._building is not None else "unknown_class") + " - " + str(
@@ -903,7 +805,8 @@ class Image(object):
         :rtype: list[Feature]
         """
         if self._all_features is None:
-            self._all_features = [feature for pyramid_level in self.get_pyramid() for feature in pyramid_level.get_features()]
+            self._all_features = [feature for pyramid_level in self.get_pyramid() for feature in
+                                  pyramid_level.get_features()]
         return self._all_features
 
 
@@ -965,10 +868,6 @@ class Building(object):
         :rtype: int
         """
         return self._identifier
-
-
-from os import walk
-from os.path import join, basename
 
 
 class ImageLoader2(object):
