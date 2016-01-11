@@ -1,3 +1,5 @@
+import os
+import pickle
 from multiprocessing.pool import Pool
 
 import scipy as sp
@@ -127,7 +129,7 @@ def _get_right(scan_line, x, w):
 
 
 def _print_sth(label, strng):
-    print "[" + label + "]" + (' ' * (8 - len(label)))+"| " + str(strng)
+    print "[" + label + "]" + (' ' * (8 - len(label))) + "| " + str(strng)
 
 
 def print_err(str):
@@ -164,7 +166,7 @@ class MagentoClassifier(object):
         """
         ult_score = 0
         for iter in range(iterations):
-            print_info("Starting testing iteration "+str(iter)+"/"+str(iterations))
+            print_info("Starting testing iteration " + str(iter) + "/" + str(iterations))
             train_images, test_images = MagentoClassifier._test_train_split_buildings(buildings,
                                                                                       train_images_per_building=train_images_per_building,
                                                                                       test_images_per_building=test_images_per_building,
@@ -173,11 +175,11 @@ class MagentoClassifier(object):
             mc = MagentoClassifier(n_neighbors=n_neighbors, weights=weights)
             mc.fit(train_images)
             score = mc.score(test_images)
-            print_info("Iteration "+str(iter)+"/"+str(iterations) + " score is "+str(score))
+            print_info("Iteration " + str(iter) + "/" + str(iterations) + " score is " + str(score))
             ult_score += score
         score_iterations = ult_score / iterations
 
-        print_info("Ultimate score is "+str(score_iterations))
+        print_info("Ultimate score is " + str(score_iterations))
         return score_iterations
 
     @staticmethod
@@ -194,7 +196,7 @@ class MagentoClassifier(object):
         all_trains, all_tests = [], []
         all_classes = 0
         for train, test in mapped:
-            if class_count!=-1 and all_classes==class_count:
+            if class_count != -1 and all_classes == class_count:
                 break
             if (len(train) < train_images_per_building) or (len(test) < test_images_per_building):
                 pass
@@ -268,7 +270,8 @@ class MagentoClassifier(object):
             #    np.argmax(chances)
             # else:
             #    raise Exception('Unknown predict method')
-            print_info("Image "+str(image)+ " predicted: "+str(result) + ", real: " + str(image.get_building().get_identifier()))
+            print_info("Image " + str(image) + " predicted: " + str(result) + ", real: " + str(
+                image.get_building().get_identifier()))
         return results
 
     def score(self, images):
@@ -639,103 +642,112 @@ class PyramidLevel(object):
         """
         :rtype: list[Feature]
         """
-        w = Feature.WIDTH
-        h = Feature.HEIGHT
-
         DISALLOWED_AREA_CONSTANT = 10e10
         DIFFERENCE_THRESHOLD = 10
         IMAGE_BORDER_IGNORE_RATIO = 0.05
 
-        w = Feature.WIDTH
-        h = Feature.HEIGHT
+        FEATURE_CACHE_PATH = '../data/cache'
 
-        angles, norms, allowed_area = self.get_data()
+        cache_file_name = str(self.get_image().__repr__() +str(self.get_scale()))+".cache"
 
-        x_offset, y_offset = int(angles.shape[1] * IMAGE_BORDER_IGNORE_RATIO), int(
-                angles.shape[0] * IMAGE_BORDER_IGNORE_RATIO)
+        cache_path = os.path.abspath(join(FEATURE_CACHE_PATH,cache_file_name))
 
-        heatmap = np.ones(angles.shape) * DISALLOWED_AREA_CONSTANT
+        try:
+            data = np.load(cache_path+'.npy')
+            minimums = data[:,:2]
+            min_vals = data[:,2]
+        except:
+            w = Feature.WIDTH
+            h = Feature.HEIGHT
 
-        kernel_x = cv2.getGaussianKernel(Feature.WIDTH * 2, 0)[np.newaxis, :]
-        kernel_y = cv2.getGaussianKernel(Feature.HEIGHT * 2 + 1, 0)[:, np.newaxis]
-        kernel = kernel_x * kernel_y
-        kernel = kernel[:, kernel.shape[1] / 2:]
+            angles, norms, allowed_area = self.get_data()
 
-        # cv2.imshow("nja", img)
-        for y in range(y_offset + h, angles.shape[0] - h - y_offset):
-            scan_line = angles[y - h:y + h + 1, :]
-            weight_line = norms[y - h:y + h + 1, :]
-            for x in range(x_offset + w, angles.shape[1] - w - x_offset):
-                if allowed_area[y, x]:
-                    trace_scan_line_b4 = _get_left(scan_line, x, w) + _get_right(scan_line, x, w)
-                    trace_scan_line_b4 = np.minimum(trace_scan_line_b4, 360 - trace_scan_line_b4)
-                    trace_weight_line = (_get_left(weight_line, x, w) * _get_right(weight_line, x, w))
-                    # weight_line_sum = np.sum(trace_weight_line)
+            x_offset, y_offset = int(angles.shape[1] * IMAGE_BORDER_IGNORE_RATIO), int(
+                    angles.shape[0] * IMAGE_BORDER_IGNORE_RATIO)
 
-                    trace_scan_line_b4 = np.abs(trace_scan_line_b4)
+            heatmap = np.ones(angles.shape) * DISALLOWED_AREA_CONSTANT
 
-                    trace_scan_line = trace_scan_line_b4.copy()
-                    trace_scan_line *= trace_weight_line  # * kernel[:,:,0]
-                    dot = np.sum(trace_scan_line)
-                    trace_weight_line_sum = np.sum(trace_weight_line)
-                    if trace_weight_line_sum ==0:
-                        print_warn("trace_weight_line_sum is 0")
-                        continue
-                    dot /= trace_weight_line_sum
-                    dot /= len(trace_scan_line)
-                    maximal_trace_weight_line_sum = trace_weight_line.shape[0] * trace_weight_line.shape[1]
-                    dot += np.sqrt(1 - trace_weight_line_sum / maximal_trace_weight_line_sum) * 10
+            kernel_x = cv2.getGaussianKernel(Feature.WIDTH * 2, 0)[np.newaxis, :]
+            kernel_y = cv2.getGaussianKernel(Feature.HEIGHT * 2 + 1, 0)[:, np.newaxis]
+            kernel = kernel_x * kernel_y
+            kernel = kernel[:, kernel.shape[1] / 2:]
 
-                    # dot = np.sqrt(trace_scan_line.dot(trace_scan_line))  # / weight_line_sum
-                    dot = dot / len(trace_scan_line)
-                    heatmap[y, x] = dot
+            # cv2.imshow("nja", img)
+            for y in range(y_offset + h, angles.shape[0] - h - y_offset):
+                scan_line = angles[y - h:y + h + 1, :]
+                weight_line = norms[y - h:y + h + 1, :]
+                for x in range(x_offset + w, angles.shape[1] - w - x_offset):
+                    if allowed_area[y, x]:
+                        trace_scan_line_b4 = _get_left(scan_line, x, w) + _get_right(scan_line, x, w)
+                        trace_scan_line_b4 = np.minimum(trace_scan_line_b4, 360 - trace_scan_line_b4)
+                        trace_weight_line = (_get_left(weight_line, x, w) * _get_right(weight_line, x, w))
+                        # weight_line_sum = np.sum(trace_weight_line)
 
-                    if dot < 0:
-                        img = cv2.cvtColor(self._grayscale.copy(), cv2.COLOR_GRAY2BGR)
-                        cv2.rectangle(img, (x - w, y - h), (x + w, y + h + 1), color=(0, 0, 255))
-                        cv2.imshow("jej", img)
-                        # cv2.imshow("jej",pyramid_level._grayscale[y-h:y+h,x-w:x+w])
-                        cv2.waitKey()
-                        # plt.subplot(122),plt.imshow(scan_line[:,x-w:x+w],'gray'),plt.show()
-                        print "score", dot, x, y
-                        print np.round(_get_left(scan_line, x, w).astype(np.int)), "left scan"
-                        print np.round(_get_left(weight_line, x, w), 2), "left scan weights"
-                        print np.round(-_get_right(scan_line, x, w).astype(np.int)), "right scan"
-                        print np.round(_get_right(weight_line, x, w), 2), "right scan weights"
-                        print np.round(trace_scan_line_b4.astype(np.int)), "trace"
-                        print np.round(trace_scan_line, 2), "trace after"
-                        print np.round(trace_weight_line, 2), "factors"
+                        trace_scan_line_b4 = np.abs(trace_scan_line_b4)
 
-        filtered_heatmap = heatmap[heatmap != DISALLOWED_AREA_CONSTANT]
-        # if len(filtered_heatmap) > 0:
-        #    print np.max(filtered_heatmap), np.min(filtered_heatmap), np.average(filtered_heatmap), np.std(
-        #            filtered_heatmap), heatmap.shape
+                        trace_scan_line = trace_scan_line_b4.copy()
+                        trace_scan_line *= trace_weight_line  # * kernel[:,:,0]
+                        dot = np.sum(trace_scan_line)
+                        trace_weight_line_sum = np.sum(trace_weight_line)
+                        if trace_weight_line_sum == 0:
+                            print_warn("trace_weight_line_sum is 0")
+                            continue
+                        dot /= trace_weight_line_sum
+                        dot /= len(trace_scan_line)
+                        maximal_trace_weight_line_sum = trace_weight_line.shape[0] * trace_weight_line.shape[1]
+                        dot += np.sqrt(1 - trace_weight_line_sum / maximal_trace_weight_line_sum) * 10
 
-        # heatmap_to_showoff = heatmap.copy()
-        # heatmap_to_showoff[heatmap==DISALLOWED_AREA_CONSTANT] =np.average(heatmap_to_showoff[heatmap_to_showoff!=DISALLOWED_AREA_CONSTANT])
-        # plt.imshow(heatmap_to_showoff, cmap='gray'), plt.show()
+                        # dot = np.sqrt(trace_scan_line.dot(trace_scan_line))  # / weight_line_sum
+                        dot = dot / len(trace_scan_line)
+                        heatmap[y, x] = dot
 
-        minimums = np.array(detect_local_minima(heatmap)).T
-        img = cv2.cvtColor(self._grayscale, cv2.COLOR_GRAY2BGR)
+                        if dot < 0:
+                            img = cv2.cvtColor(self._grayscale.copy(), cv2.COLOR_GRAY2BGR)
+                            cv2.rectangle(img, (x - w, y - h), (x + w, y + h + 1), color=(0, 0, 255))
+                            cv2.imshow("jej", img)
+                            # cv2.imshow("jej",pyramid_level._grayscale[y-h:y+h,x-w:x+w])
+                            cv2.waitKey()
+                            # plt.subplot(122),plt.imshow(scan_line[:,x-w:x+w],'gray'),plt.show()
+                            print "score", dot, x, y
+                            print np.round(_get_left(scan_line, x, w).astype(np.int)), "left scan"
+                            print np.round(_get_left(weight_line, x, w), 2), "left scan weights"
+                            print np.round(-_get_right(scan_line, x, w).astype(np.int)), "right scan"
+                            print np.round(_get_right(weight_line, x, w), 2), "right scan weights"
+                            print np.round(trace_scan_line_b4.astype(np.int)), "trace"
+                            print np.round(trace_scan_line, 2), "trace after"
+                            print np.round(trace_weight_line, 2), "factors"
 
-        min_vals = heatmap[minimums[:, 0], minimums[:, 1]]
-        argsort_indices = np.argsort(min_vals)
-        minimums = minimums[argsort_indices]
-        min_vals = min_vals[argsort_indices]
-        if minimums.shape[0] > 100:
-            minimums = minimums[:100]
-            min_vals = min_vals[:100]
-        minimums = minimums[min_vals < DIFFERENCE_THRESHOLD]
-        min_vals = min_vals[min_vals < DIFFERENCE_THRESHOLD]
+            filtered_heatmap = heatmap[heatmap != DISALLOWED_AREA_CONSTANT]
+            # if len(filtered_heatmap) > 0:
+            #    print np.max(filtered_heatmap), np.min(filtered_heatmap), np.average(filtered_heatmap), np.std(
+            #            filtered_heatmap), heatmap.shape
 
-        for xy, minval in zip(minimums, min_vals):
-            cv2.circle(img, (xy[1], xy[0]), 1, (0, 0, 255))
-            # img[xy[0], xy[1]] = (0, 0, 255 - 0*(minval - np.min(min_vals)) / (np.max(min_vals) - np.min(min_vals)) * 255)
+            # heatmap_to_showoff = heatmap.copy()
+            # heatmap_to_showoff[heatmap==DISALLOWED_AREA_CONSTANT] =np.average(heatmap_to_showoff[heatmap_to_showoff!=DISALLOWED_AREA_CONSTANT])
+            # plt.imshow(heatmap_to_showoff, cmap='gray'), plt.show()
 
-        b, g, r = cv2.split(img)
-        img = cv2.merge([r, g, b])
-        # plt.subplot(121), plt.imshow(img), plt.subplot(122), plt.imshow(allowed_area, 'gray'), plt.show()
-        # print minimums.shape
+            minimums = np.array(detect_local_minima(heatmap)).T
+            img = cv2.cvtColor(self._grayscale, cv2.COLOR_GRAY2BGR)
+
+            min_vals = heatmap[minimums[:, 0], minimums[:, 1]]
+            argsort_indices = np.argsort(min_vals)
+            minimums = minimums[argsort_indices]
+            min_vals = min_vals[argsort_indices]
+            if minimums.shape[0] > 100:
+                minimums = minimums[:100]
+                min_vals = min_vals[:100]
+            minimums = minimums[min_vals < DIFFERENCE_THRESHOLD]
+            min_vals = min_vals[min_vals < DIFFERENCE_THRESHOLD]
+
+            for xy, minval in zip(minimums, min_vals):
+                cv2.circle(img, (xy[1], xy[0]), 1, (0, 0, 255))
+                # img[xy[0], xy[1]] = (0, 0, 255 - 0*(minval - np.min(min_vals)) / (np.max(min_vals) - np.min(min_vals)) * 255)
+
+            b, g, r = cv2.split(img)
+            img = cv2.merge([r, g, b])
+            # plt.subplot(121), plt.imshow(img), plt.subplot(122), plt.imshow(allowed_area, 'gray'), plt.show()
+            # print minimums.shape
+            np.save(cache_path,np.hstack((minimums,min_vals[:,np.newaxis])))
 
         features_in_level = []
         for (y, x), min_val in zip(minimums, min_vals):
@@ -785,6 +797,7 @@ class Image(object):
         self._image_processed = None
         self._building = None  # type: Building
         self._pyramid = None
+        self._all_features = None #type: list[Feature]
 
     def __repr__(self):
         return (str(self._building.get_name()) if self._building is not None else "unknown_class") + " - " + str(
@@ -837,7 +850,7 @@ class Image(object):
         return self._image_rgb
 
     def _lazy_load(self):
-        print_info("Preparing image: " +str(self))
+        print_info("Preparing image: " + str(self))
         image = self._letterbox_image(cv2.imread(self._image_path))
 
         if len(image.shape) != 3:
@@ -889,8 +902,9 @@ class Image(object):
 
         :rtype: list[Feature]
         """
-        return [feature for pyramid_level in self.get_pyramid() for feature in pyramid_level.get_features()]
-
+        if self._all_features is None:
+            self._all_features = [feature for pyramid_level in self.get_pyramid() for feature in pyramid_level.get_features()]
+        return self._all_features
 
 
 class Building(object):
