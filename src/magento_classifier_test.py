@@ -9,24 +9,30 @@ def extract_name(path):
 def extract_name_withoutclass(path):
     return path.split('/')[-1].split('.')[0][1:-1]
 
-
-# extracts the first number from the filename (TODO, zasad samo 1 char fml)
+#extracts the first number from the filename (TODO, zasad samo 1 char fml)
 def make_label(filename):
-    #try:
+    fname = extract_name(filename)
+    if (is_number(fname[1])):
+        return int(fname[0:2])
+    else:
         return int(extract_name(filename)[0])
-    #except:
-    #    return 0
+
+def is_number(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
 
 
-# Extract the first number from the image name and sets that number as the image class (puts it in labels)
-# returns the labes for images
+#Extract the first number from the image name and sets that number as the image class (puts it in labels)
+#returns the labes for images
 def make_labels(filenames):
     labels = list()
     for filename in filenames:
         labels.append(make_label(filename))
 
     return labels
-
 
 data_path = '../data'
 
@@ -46,19 +52,19 @@ for rrr in range(0,1000000):
 
     # train_images = [t1]
     # test_image = t2
-    #train_images = ['../data/train/3tor1.jpg']
-    #test_image = '../data/train/3tor2.jpg'
+    #train_images = ['../data/train/3tor5.jpg']
+    #test_image = '../data/train/3tor7.jpg'
     # #
     # train_images = ['../data/train/2nd3.jpg']
-    # test_image = '../data/train/2nd4.jpg'
+    # test_image = '../data/train/2nd3.jpg'
     #
-    # train_images = ['../data/train/2nd4.jpg']
+    # train_images = ['../data/train/2nd3.jpg']
     # test_image = '../data/train/2nd5.jpg'
     #
     #
     # train_images = ['../data/train/2nd5.jpg']
     # test_image = '../data/train/2nd1.jpg'
-    #,'../data/train/2nd2.jpg','../data/train/2nd3.jpg','../data/train/2nd4.jpg','../data/train/2nd5.jpg']
+    #,'../data/train/2nd2.jpg','../data/train/2nd3.jpg','../data/train/2nd3.jpg','../data/train/2nd5.jpg']
 
 
     # print train_images
