@@ -284,7 +284,7 @@ class MagentoClassifier(object):
         y_true = [image.get_building().get_identifier() for image in images]
         print y_pred
         print y_true
-        return len(y_pred) - zero_one_loss(y_true, y_pred)
+        return 1-zero_one_loss(y_true, y_pred)/float(len(y_pred))
 
     def show_match(self, image_test, matches, distances):
         """
