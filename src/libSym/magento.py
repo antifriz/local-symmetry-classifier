@@ -11,6 +11,7 @@ from scipy.spatial.distance import euclidean, cdist
 from scipy.ndimage.interpolation import zoom
 from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier, NearestNeighbors
 
+from sklearn.preprocessing import normalize
 from matplotlib import pyplot as plt
 
 import scipy.ndimage.filters as filters
@@ -122,7 +123,10 @@ def _get_right(scan_line, x, w):
 
 
 class MagentoClassifier(object):
-    def __init__(self, n_neighbors=10, weights='distance'):
+    N_NEIGHBORS = 10
+    KNN_WEIGHTS = 'distance'
+
+    def __init__(self, n_neighbors=N_NEIGHBORS, weights=KNN_WEIGHTS):
         self._classifier = KNeighborsClassifier(n_neighbors=n_neighbors, weights=weights)
         self._buildings = None
         """
@@ -134,6 +138,7 @@ class MagentoClassifier(object):
 
         :type buildings: list[Building]
         """
+        print "Fitting knn with",len(buildings), "buildings."
 
         self._buildings = buildings
         features_all = [feature for building in buildings for feature in building.get_all_features()]
@@ -155,17 +160,15 @@ class MagentoClassifier(object):
 
         :type image: Image
         """
-        N_NEIGHBORS = 1
-
         features_all = image.get_all_features()
 
         descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
         assert len(descriptors_all.shape) == 2
-        distances, matches = self._classifier.kneighbors(descriptors_all, n_neighbors=N_NEIGHBORS, return_distance=True)
-        self.show_match(image, matches, distances)
+        #distances, matches = self._classifier.kneighbors(descriptors_all, n_neighbors=N_NEIGHBORS, return_distance=True)
+        #self.show_match(image, matches, distances)
         # descriptors = create_descriptors(filename)
         # if method == 'default':
-        #    return int(sp.stats.mstats.mode(self._classifier.predict(descriptors))[0][0])
+        return int(sp.stats.mstats.mode(self._classifier.predict(descriptors_all))[0][0])
         # elif method == 'strict':
         #    pp = self._classifier.predict_proba(descriptors)
         #    chances = np.zeros(pp.shape[1])
@@ -248,20 +251,20 @@ class MagentoClassifier(object):
                 cv2.circle(showoff, tuple(xy2), w2, (0, 0, 255), thickness=1)
                 cv2.circle(showoff2, tuple(xy2), w2, (0, 0, 255), thickness=1)
 
-                # if (xy2_-xy1).dot(xy2_-xy1) < 1000:
+                #if (xy2_-xy1).dot(xy2_-xy1) < 1000:
                 cv2.imshow("", showoff2)
                 k = cv2.waitKey(0)
                 if k == 27:  # wait for ESC key to exit
-                    cv2.destroyAllWindows()
-                    exit(0)
-                    # def get_stripe(img, f):
-                    #     return cv2.resize(img[f._y - 5:f._y + 5 + 1, f._x - f._w:f._x + f._w + 1], (0, 0), fx=10, fy=10,
-                    #                       interpolation=cv2.INTER_NEAREST)
-                    #
-                    # first_stripe = get_stripe(image_test.get_processed(), feature)
-                    # second_stripe = get_stripe(image_train.get_processed(), other_feature)
-                    # cv2.imshow("A", first_stripe)
-                    # cv2.imshow("B", second_stripe)
+                   cv2.destroyAllWindows()
+                   exit(0)
+                # def get_stripe(img, f):
+                #     return cv2.resize(img[f._y - 5:f._y + 5 + 1, f._x - f._w:f._x + f._w + 1], (0, 0), fx=10, fy=10,
+                #                       interpolation=cv2.INTER_NEAREST)
+                #
+                # first_stripe = get_stripe(image_test.get_processed(), feature)
+                # second_stripe = get_stripe(image_train.get_processed(), other_feature)
+                # cv2.imshow("A", first_stripe)
+                # cv2.imshow("B", second_stripe)
 
         cv2.imshow("", showoff)
         cv2.imwrite("../data/outputs/jej/_" + str(random.random()) + "cool.jpg", showoff,
@@ -298,6 +301,7 @@ class Feature(object):
         :type feature:Feature
         :rtype: np.array
         """
+        CHUNKS = 4
 
         x = self._x
         y = self._y
@@ -305,34 +309,47 @@ class Feature(object):
         h = Feature.HEIGHT
 
         angles, weights_all, _ = self._pyramid_level.get_data()
-        scan_lines = angles[y - h: y + h + 1, :]
-        weights = weights_all[y - h: y + h + 1, :]
-        left, right = _get_left(scan_lines, x, w), _get_right(scan_lines, x, w)
-        left_w, right_w = _get_left(weights, x, w), _get_right(weights, x, w)
+        scan_lines = angles[y - h: y + h + 1, x - w:x + w]
+        weights = weights_all[y - h: y + h + 1, x - w:x + w]
 
-        sum = left - right
-        sum = np.minimum(sum, 360 - sum)
-        sum_w = left_w + right_w
-
-        avg_line = (sum) / 2
-        avg_line_w = (sum_w) / 2
+        # left, right = _get_left(scan_lines, x, w), _get_right(scan_lines, x, w)
+        # left_w, right_w = _get_left(weights, x, w), _get_right(weights, x, w)
 
 
-        self._descriptor = avg_line.ravel()
+        # sum = left - right
+        # sum = np.minimum(sum, 360 - sum)
+        # sum_w = left_w + right_w
+
+        # avg_line = (sum) / 2
+        # avg_line_w = (sum_w) / 2
+
+        # self._descriptor = avg_line.ravel()
+        # return
+
+
+        splitted_scan_lines = np.split(scan_lines, CHUNKS, axis=1)
+        splitted_weights = np.split(scan_lines, CHUNKS, axis=1)
+
+        hs = []
+        for chunk_lines, chunk_weights in zip(splitted_scan_lines, splitted_weights):
+            hs.append(np.histogram(chunk_lines, bins=8, range=(-180, 180), weights=chunk_weights)[0])
+
+        self._descriptor = np.array(hs).flatten()
         return
 
-        #print avg_line[:, :]
+        # print avg_line[:, :]
         half = avg_line.shape[1] / 2.0
-        h1= np.histogram(avg_line[:, :half], bins=8,range=(-180,180), weights=avg_line_w[:,:half],density=True)[0]
-        h2= np.histogram(avg_line[:, half:], bins=8,range=(-180,180), weights=avg_line_w[:,half:],density=True)[0]
 
-        #print h1
-        #print h2
+        h1 = np.histogram(avg_line[:, :half], bins=8, range=(-180, 180), weights=avg_line_w[:, :half], density=True)[0]
+        h2 = np.histogram(avg_line[:, half:], bins=8, range=(-180, 180), weights=avg_line_w[:, half:], density=True)[0]
 
-        vals = np.append(h1,h2)
+        # print h1
+        # print h2
+
+        vals = np.append(h1, h2)
         self._descriptor = vals
 
-        #print vals
+        # print vals
         #
         # exit(0)
         # raw = (avg_line < np.average(avg_line)).astype(float)
@@ -450,10 +467,11 @@ class PyramidLevel(object):
         return self._data
 
     def _generate_data(self):
-        NORM_LIMIT = 250
+        NORM_LIMIT = 500
         SURPRESSING_FACTOR = 0.5
+        NECESSARY_ANGLE_OFFSET = 60
 
-        print "Hello"
+        #print "Hello"
         img = self._grayscale
 
         sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
@@ -463,12 +481,22 @@ class PyramidLevel(object):
 
         sobel_norms = np.sqrt((sobel * sobel.conjugate()).real)
 
-        sobel_norms *= float(SURPRESSING_FACTOR) / NORM_LIMIT
+        sobel_norms /= NORM_LIMIT
         sobel_norms[sobel_norms > 1] = 1
+        sobel_norms[sobel_norms < 1] *= SURPRESSING_FACTOR
 
         sobel_angles = np.angle(sobel, deg=True).real
 
-        allowed_area = sobel_norms == 1
+        sobel_angles_factor = np.abs(sobel_angles)
+        sobel_angles_factor=np.minimum(sobel_angles_factor,180-sobel_angles_factor)
+        sobel_angles_factor/=NECESSARY_ANGLE_OFFSET
+        sobel_angles_factor[sobel_angles_factor>1] =1
+
+        sobel_weights = sobel_angles_factor * sobel_norms
+
+        #print sobel_weights[sobel_weights>1].shape
+
+        allowed_area = (sobel_weights == 1)
 
         ones = np.ones((Feature.HEIGHT * 2 + 1, Feature.WIDTH - 1))
         zeros = ones * 0
@@ -478,15 +506,15 @@ class PyramidLevel(object):
         allowed_area = morphology.binary_dilation(allowed_area, structure=left_test) & morphology.binary_dilation(
                 allowed_area, structure=right_test)
 
-        self._data = (sobel_angles, sobel_norms, allowed_area)
+        self._data = (sobel_angles, sobel_weights, allowed_area)
         # plt.subplot(231), plt.imshow(self._grayscale, cmap='gray')
         # plt.subplot(232), plt.imshow(allowed_area, cmap='gray')
         # plt.subplot(233), plt.imshow(sobel_norms, cmap='gray')
         # plt.subplot(234), plt.imshow(sobel_angles, cmap='gray')
-        # plt.subplot(235), plt.imshow(sobel_x, cmap='gray')
-        # plt.subplot(236), plt.imshow(sobel_y, cmap='gray'), plt.show()
-        #
-        print np.min(sobel_x), np.max(sobel_x), np.min(sobel_y), np.max(sobel_y)
+        # plt.subplot(235), plt.imshow(sobel_weights,'gray'),plt.show()
+        #plt.subplot(235), plt.imshow(sobel_x, cmap='gray')
+        #plt.subplot(236), plt.imshow(sobel_y, cmap='gray'), plt.show()
+        #print np.min(sobel_x), np.max(sobel_x), np.min(sobel_y), np.max(sobel_y)
 
         # self._matrix
         # exit(0)
@@ -511,48 +539,73 @@ class PyramidLevel(object):
         h = Feature.HEIGHT
 
         DISALLOWED_AREA_CONSTANT = 10e10
-        DIFFERENCE_THRESHOLD = 0.075
+        DIFFERENCE_THRESHOLD = 10
+        IMAGE_BORDER_IGNORE_RATIO = 0.05
 
         w = Feature.WIDTH
         h = Feature.HEIGHT
 
+
         angles, norms, allowed_area = self.get_data()
+
+        x_offset,y_offset = int(angles.shape[1]*IMAGE_BORDER_IGNORE_RATIO), int(angles.shape[0]*IMAGE_BORDER_IGNORE_RATIO)
+
 
         heatmap = np.ones(angles.shape) * DISALLOWED_AREA_CONSTANT
 
+        kernel_x = cv2.getGaussianKernel(Feature.WIDTH * 2, 0)[np.newaxis, :]
+        kernel_y = cv2.getGaussianKernel(Feature.HEIGHT * 2 + 1, 0)[:, np.newaxis]
+        kernel = kernel_x * kernel_y
+        kernel = kernel[:, kernel.shape[1] / 2:]
+
         # cv2.imshow("nja", img)
-        for y in range(h, angles.shape[0] - h):
+        for y in range(y_offset+h, angles.shape[0] - h-y_offset):
             scan_line = angles[y - h:y + h + 1, :]
             weight_line = norms[y - h:y + h + 1, :]
-            for x in range(w, angles.shape[1] - w):
+            for x in range(x_offset+w, angles.shape[1] - w-x_offset):
                 if allowed_area[y, x]:
-                    trace_scan_line = _get_left(scan_line, x, w) + _get_right(scan_line, x, w)
-                    trace_scan_line = np.minimum(trace_scan_line, 360 - trace_scan_line)
-                    trace_weight_line = _get_left(weight_line, x, w) + _get_right(weight_line, x, w)
-                    weight_line_sum = np.sum(trace_weight_line)
+                    trace_scan_line_b4 = _get_left(scan_line, x, w) + _get_right(scan_line, x, w)
+                    trace_scan_line_b4 = np.minimum(trace_scan_line_b4, 360 - trace_scan_line_b4)
+                    trace_weight_line = (_get_left(weight_line, x, w) * _get_right(weight_line, x, w))
+                    # weight_line_sum = np.sum(trace_weight_line)
 
-                    trace_weight_line /= weight_line_sum
-                    trace_scan_line *= trace_weight_line
-                    trace_scan_line = trace_scan_line.flatten()
-                    dot = np.sqrt(trace_scan_line.dot(trace_scan_line)) / weight_line_sum
+                    trace_scan_line_b4 = np.abs(trace_scan_line_b4)
+
+                    trace_scan_line = trace_scan_line_b4.copy()
+                    trace_scan_line *= trace_weight_line  # * kernel[:,:,0]
+                    dot = np.sum(trace_scan_line)
+                    trace_weight_line_sum = np.sum(trace_weight_line)
+                    dot /= trace_weight_line_sum
+                    dot /=len(trace_scan_line)
+                    maximal_trace_weight_line_sum = trace_weight_line.shape[0] * trace_weight_line.shape[1]
+                    dot +=np.sqrt(1-trace_weight_line_sum/maximal_trace_weight_line_sum)*10
+
+
+                    #dot = np.sqrt(trace_scan_line.dot(trace_scan_line))  # / weight_line_sum
+                    dot = dot / len(trace_scan_line)
                     heatmap[y, x] = dot
-                    # if dot <= DIFFERENCE_THRESHOLD:
-                    #     img = cv2.cvtColor(pyramid_level._grayscale.copy(),cv2.COLOR_GRAY2BGR)
-                    #     cv2.rectangle(img,(x-w,y-h),(x+w,y+h+1),color=(0,0,255))
-                    #     cv2.imshow("jej",img)
-                    #     # cv2.imshow("jej",pyramid_level._grayscale[y-h:y+h,x-w:x+w])
-                    #     cv2.waitKey()
-                    #    #plt.subplot(122),plt.imshow(scan_line[:,x-w:x+w],'gray'),plt.show()
-                    #     print "score", dot, x, y
-                    #     print np.round(_get_left(scan_line, x, w).astype(np.int))
-                    #     print np.round(_get_left(weight_line, x, w),2)
-                    #     print np.round(-_get_right(scan_line, x, w).astype(np.int))
-                    #     print np.round(_get_right(weight_line, x, w),2)
+
+                    if dot < 0:
+                        img = cv2.cvtColor(self._grayscale.copy(), cv2.COLOR_GRAY2BGR)
+                        cv2.rectangle(img, (x - w, y - h), (x + w, y + h + 1), color=(0, 0, 255))
+                        cv2.imshow("jej", img)
+                        # cv2.imshow("jej",pyramid_level._grayscale[y-h:y+h,x-w:x+w])
+                        cv2.waitKey()
+                        # plt.subplot(122),plt.imshow(scan_line[:,x-w:x+w],'gray'),plt.show()
+                        print "score", dot, x, y
+                        print np.round(_get_left(scan_line, x, w).astype(np.int)), "left scan"
+                        print np.round(_get_left(weight_line, x, w), 2), "left scan weights"
+                        print np.round(-_get_right(scan_line, x, w).astype(np.int)), "right scan"
+                        print np.round(_get_right(weight_line, x, w), 2), "right scan weights"
+                        print np.round(trace_scan_line_b4.astype(np.int)), "trace"
+                        print np.round(trace_scan_line,2), "trace after"
+                        print np.round(trace_weight_line, 2), "factors"
 
         filtered_heatmap = heatmap[heatmap != DISALLOWED_AREA_CONSTANT]
-        if len(filtered_heatmap)>0:
-            print np.max(filtered_heatmap), np.min(filtered_heatmap), np.average(filtered_heatmap), np.std(
-                    filtered_heatmap), heatmap.shape
+        #if len(filtered_heatmap) > 0:
+        #    print np.max(filtered_heatmap), np.min(filtered_heatmap), np.average(filtered_heatmap), np.std(
+        #            filtered_heatmap), heatmap.shape
+
         # heatmap_to_showoff = heatmap.copy()
         # heatmap_to_showoff[heatmap==DISALLOWED_AREA_CONSTANT] =np.average(heatmap_to_showoff[heatmap_to_showoff!=DISALLOWED_AREA_CONSTANT])
         # plt.imshow(heatmap_to_showoff, cmap='gray'), plt.show()
@@ -564,18 +617,20 @@ class PyramidLevel(object):
         argsort_indices = np.argsort(min_vals)
         minimums = minimums[argsort_indices]
         min_vals = min_vals[argsort_indices]
+        if minimums.shape[0] > 100:
+            minimums = minimums[:100]
+            min_vals = min_vals[:100]
         minimums = minimums[min_vals < DIFFERENCE_THRESHOLD]
         min_vals = min_vals[min_vals < DIFFERENCE_THRESHOLD]
 
-        for xy in minimums:
-            cv2.circle(img, (xy[1], xy[0]), w, (0, 0, 255))
-
-        img[minimums[:, 0], minimums[:, 1]] = (0, 0, 255)
+        for xy, minval in zip(minimums, min_vals):
+            cv2.circle(img, (xy[1], xy[0]), 1, (0, 0, 255))
+            #img[xy[0], xy[1]] = (0, 0, 255 - 0*(minval - np.min(min_vals)) / (np.max(min_vals) - np.min(min_vals)) * 255)
 
         b, g, r = cv2.split(img)
         img = cv2.merge([r, g, b])
-        # plt.subplot(121), plt.imshow(img), plt.subplot(122), plt.imshow(allowed_area, 'gray'), plt.show()
-        print minimums.shape
+        #plt.subplot(121), plt.imshow(img), plt.subplot(122), plt.imshow(allowed_area, 'gray'), plt.show()
+        # print minimums.shape
 
         features_in_level = []
         for (y, x), min_val in zip(minimums, min_vals):
@@ -673,6 +728,7 @@ class Image(object):
         return self._image_rgb
 
     def _lazy_load(self):
+        print "Preparing image:",self._image_path
         image = self._letterbox_image(cv2.imread(self._image_path))
 
         if len(image.shape) != 3:

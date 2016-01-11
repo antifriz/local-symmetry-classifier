@@ -12,10 +12,10 @@ def extract_name_withoutclass(path):
 
 # extracts the first number from the filename (TODO, zasad samo 1 char fml)
 def make_label(filename):
-    try:
+    #try:
         return int(extract_name(filename)[0])
-    except:
-        return 0
+    #except:
+    #    return 0
 
 
 # Extract the first number from the image name and sets that number as the image class (puts it in labels)
@@ -38,8 +38,8 @@ for rrr in range(0,1000000):
 
     # t1 = np.random.choice(tt)
     # t2 = np.random.choice(tt)
-    train_images = ['../data/train/2nd1.jpg']
-    test_image = '../data/train/2nd3.jpg'
+    train_images = image_files['train']#['../data/train/2nd1.jpg']
+    #test_images = #'../data/train/2nd3.jpg'
 
     # train_images = ['../data/train/2nd2.jpg']
     # test_image = '../data/train/2nd3.jpg'
@@ -61,10 +61,10 @@ for rrr in range(0,1000000):
     #,'../data/train/2nd2.jpg','../data/train/2nd3.jpg','../data/train/2nd4.jpg','../data/train/2nd5.jpg']
 
 
-    print train_images
-    print test_image
+    # print train_images
+    # print test_image
     train_labels = make_labels(train_images)
-    test_label = make_label(test_image)
+    # test_label = make_label(test_image)
 
     train_images = map(lambda x: Image(x), train_images)
     #[train_image.show() for train_image in train_images]
@@ -89,25 +89,25 @@ for rrr in range(0,1000000):
     mc = MagentoClassifier()
     mc.fit(buildings)
 
-    mc.predict(Image(test_image))
+    #mc.predict(Image(test_image))
 
 
 
 
-    #
-    #
-    #
-    # i = 0
-    # cnt = 0
-    # labels_test = make_labels(image_files['test'])
-    # for filename, label in zip(image_files['test'], labels_test):
-    #     razred = mc.predict(filename)
-    #     is_ok = razred == label
-    #     if is_ok:
-    #         i += 1
-    #     cnt += 1
-    #     print "Testing %s" % (filename)
-    #     print ('OK' if is_ok else '--'), label, '->', razred
-    # print 'Hit:', i, 'Miss:', cnt - i, 'Percentage:', str(i / float(cnt) * 100) + "%", 'Database size:', len(
-    #         image_files['train'])
+
+
+
+    i = 0
+    cnt = 0
+    labels_test = make_labels(image_files['test'])
+    for filename, label in zip(image_files['test'], labels_test):
+        razred = mc.predict(Image(filename))
+        is_ok = razred == label
+        if is_ok:
+            i += 1
+        cnt += 1
+        print "Testing %s" % (filename)
+        print ('OK' if is_ok else '--'), label, '->', razred
+    print 'Hit:', i, 'Miss:', cnt - i, 'Percentage:', str(i / float(cnt) * 100) + "%", 'Database size:', len(
+            image_files['train'])
     break
