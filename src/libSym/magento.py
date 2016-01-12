@@ -16,6 +16,7 @@ from os.path import join, basename
 
 LOG_LEVEL = 4
 CPU_COUNT = 8
+SHOW_DETECTIONS = False
 
 def detect_local_minima(arr):
     neighborhood = morphology.generate_binary_structure(len(arr.shape), 2)
@@ -70,7 +71,8 @@ def predict(data):
         features_all = image.get_all_features()
         descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
         assert len(descriptors_all.shape) == 2
-        # clf.show_match(image,descriptors_all)
+        if SHOW_DETECTIONS:
+            clf.show_match(image, descriptors_all)
         # descriptors = create_descriptors(filename)
         # if method == 'default':
         i = int(sp.stats.mstats.mode(clf._classifier.predict(descriptors_all))[0][0])
@@ -165,8 +167,10 @@ class MagentoClassifier(object):
     def __init__(self, n_neighbors=N_NEIGHBORS, weights=KNN_WEIGHTS):
         self._classifier = KNeighborsClassifier(n_neighbors=n_neighbors, weights=weights)
         self._buildings = None
+        self._features_all = None
         """
         :type _buildings: list[Buildings]|None
+        :type _features_all: list[Feature]|None
         """
 
     def fit(self, images):
@@ -176,8 +180,14 @@ class MagentoClassifier(object):
         """
         print_info("Starting fitting process")
         assert all([image.get_building() is not None for image in images])
+        features_all = []
+        for image in images:
+            print_info("Processing image "+str(image))
+            features_all.append(image.get_all_features())
+        features_all = [feature for features in features_all for feature in features]
 
-        features_all = [feature for image in images for feature in image.get_all_features()]
+        #features_all = [feature for image in images for feature in image.get_all_features()]
+        self._features_all = features_all
 
         descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
         assert len(descriptors_all.shape) == 2
@@ -197,14 +207,16 @@ class MagentoClassifier(object):
         :rtype: list[int]
         """
         print_info("Starting predict process")
-        results = []
-        pool = Pool(CPU_COUNT)
         data = [(image, self) for image in images]
-        results = pool.map(predict, data)
-        pool.close()
-        pool = None
-        gc.collect()
-        return results
+        if CPU_COUNT == 1:
+            return map(predict,data)
+        else:
+            pool = Pool(CPU_COUNT)
+            results = pool.map(predict, data)
+            pool.close()
+            pool = None
+            gc.collect()
+            return results
 
     def score(self, images):
         """
@@ -222,92 +234,111 @@ class MagentoClassifier(object):
         :type matches: np.array
         :type distances: np.array
         """
-        distances, matches = self._classifier.kneighbors(descriptors_all, return_distance=True)
-        image_train = self._buildings[0].get_images()[0]
+        distances, matches = self._classifier.kneighbors(descriptors_all, return_distance=True, n_neighbors=1)
+
+        # image_train = self._buildings[0].get_images()[0]
         """
         :type image_train: Image
         """
-        image_train_rgb = image_train.get_rgb()
+        # image_train_rgb = image_train.get_rgb()
         image_test_rgb = image_test.get_rgb()
 
-        offset = image_test_rgb.shape[1]
-        size = offset + image_train_rgb.shape[1]
+        # offset = image_test_rgb.shape[1]
+        # size = offset + image_train_rgb.shape[1]
 
-        showoff = np.zeros((Image.DEFAULT_HEIGHT, size, 3), np.uint8)
+        # showoff = np.zeros((Image.DEFAULT_HEIGHT, size, 3), np.uint8)
 
-        showoff[0:image_test_rgb.shape[0], 0:image_test_rgb.shape[1], :] = image_test_rgb
-        showoff[0:image_train_rgb.shape[0], 0 + offset:image_train_rgb.shape[1] + offset, :] = image_train_rgb
+        # showoff[0:image_test_rgb.shape[0], 0:image_test_rgb.shape[1], :] = image_test_rgb
+        # showoff[0:image_train_rgb.shape[0], 0 + offset:image_train_rgb.shape[1] + offset, :] = image_train_rgb
 
-        only_circles = showoff.copy()
-        raw_showoff = showoff.copy()
-        for feature in image_test.get_all_features():
-            xy1, w1 = feature.get_global_xy_w()
-            cv2.circle(only_circles, tuple(xy1), w1, (0, 0, 255), thickness=1)
-        for feature in image_train.get_all_features():
-            xy2, w2 = feature.get_global_xy_w()
-            xy2 = xy2 + [offset, 0]  # do not += !!!
-            cv2.circle(only_circles, tuple(xy2), w2, (0, 0, 255), thickness=1)
-        cv2.imshow("ftrs", only_circles)
-        cv2.waitKey()
+        # only_circles = showoff.copy()
+        # raw_showoff = showoff.copy()
+        # only_circles = image_test_rgb.copy()
+        # for feature in image_test.get_all_features():
+        #     xy1, w1 = feature.get_global_xy_w()
+        #     cv2.circle(only_circles, tuple(xy1), w1, (0, 0, 255), thickness=1)
+        # for feature in image_train.get_all_features():
+        #     xy2, w2 = feature.get_global_xy_w()
+        #     xy2 = xy2 + [offset, 0]  # do not += !!!
+        #     cv2.circle(only_circles, tuple(xy2), w2, (0, 0, 255), thickness=1)
+        #cv2.imshow("ftrs", only_circles)
+        #cv2.waitKey()
 
         matching_score = 0
         for feature, matchs, distancess in zip(image_test.get_all_features(), matches, distances):
             xy1, w1 = feature.get_global_xy_w()
+            for m in matchs:
+                other_feature = self._features_all[m]
+                image_train_rgb = other_feature.get_pyramid_level().get_image().get_rgb()
+                xy2, w2 = other_feature.get_global_xy_w()
 
-            best_other_feature = image_train.get_all_features()[matchs[0]]
-            xy2, w2 = best_other_feature.get_global_xy_w()
-            matching_score += (xy1 - xy2) ** 2  # + (w1-w2)**2
-        print "", np.sqrt(np.average(matching_score)), " +- ", np.sqrt(np.std(matching_score))
+                offset = image_test_rgb.shape[1]
+                size = offset + image_train_rgb.shape[1]
+                xy2 +=[offset,0]
 
-        FACTOR = 3
-        for feature, matchs, distancess in zip(image_test.get_all_features(), matches, distances):
-            showoff2 = raw_showoff.copy()
-            xy1, w1 = feature.get_global_xy_w()
+                showoff = np.zeros((Image.DEFAULT_HEIGHT, size, 3), np.uint8)
 
-            # if all(distances>FACTOR):
-            #     continue
+                showoff[0:image_test_rgb.shape[0], 0:image_test_rgb.shape[1], :] = image_test_rgb
+                showoff[0:image_train_rgb.shape[0], 0 + offset:image_train_rgb.shape[1] + offset, :] = image_train_rgb
 
-            cv2.circle(showoff, tuple(xy1), w1, (0, 0, 255), thickness=1)
-            cv2.circle(showoff2, tuple(xy1), w1, (0, 0, 255), thickness=1)
-
-            feature.show("test")
-            for idx, (match, distance) in enumerate(zip(matchs, distancess)):
-                # if distance>FACTOR:
-                #     continue
-                other_feature = image_train.get_all_features()[match]
-                xy2_, w2 = other_feature.get_global_xy_w()
-                xy2 = xy2_ + [offset, 0]  # do not += !!!
-                other_feature.show("train")
-                print distance
-
-                score___ = (1 - (feature._score * other_feature._score) / (15.0 ** 2))
-                rating = int(score___ * 128 + 127)
-                distance_ = int(1 / (distance + 1) * 10)
-                # print distance, distance_, rating, feature._score, other_feature._score
-                cv2.line(showoff, tuple(xy1), tuple(xy2), (0, 0, rating), distance_)
-                cv2.line(showoff2, tuple(xy1), tuple(xy2), (0, 0, rating), distance_)
+                cv2.line(showoff, tuple(xy1), tuple(xy2), (0, 0, 255), thickness=1)
+                cv2.circle(showoff, tuple(xy1), w1, (0, 0, 255), thickness=1)
                 cv2.circle(showoff, tuple(xy2), w2, (0, 0, 255), thickness=1)
-                cv2.circle(showoff2, tuple(xy2), w2, (0, 0, 255), thickness=1)
-
-                # if (xy2_-xy1).dot(xy2_-xy1) < 1000:
-                cv2.imshow("", showoff2)
-                k = cv2.waitKey(0)
-                if k == 27:  # wait for ESC key to exit
-                    cv2.destroyAllWindows()
-                    exit(0)
-                    # def get_stripe(img, f):
-                    #     return cv2.resize(img[f._y - 5:f._y + 5 + 1, f._x - f._w:f._x + f._w + 1], (0, 0), fx=10, fy=10,
-                    #                       interpolation=cv2.INTER_NEAREST)
-                    #
-                    # first_stripe = get_stripe(image_test.get_processed(), feature)
-                    # second_stripe = get_stripe(image_train.get_processed(), other_feature)
-                    # cv2.imshow("A", first_stripe)
-                    # cv2.imshow("B", second_stripe)
-
-        cv2.imshow("", showoff)
-        cv2.imwrite("../data/outputs/jej/_" + str(random.random()) + "cool.jpg", showoff,
-                    [int(cv2.IMWRITE_JPEG_QUALITY), 100])
-        cv2.waitKey()
+                from matplotlib import pyplot as plt
+                plt.imshow(cv2.cvtColor(showoff, cv2.COLOR_RGB2BGR)), plt.show()
+        #
+        #     matching_score += (xy1 - xy2) ** 2  # + (w1-w2)**2
+        # print "", np.sqrt(np.average(matching_score)), " +- ", np.sqrt(np.std(matching_score))
+        #
+        # FACTOR = 3
+        # for feature, matchs, distancess in zip(image_test.get_all_features(), matches, distances):
+        #     showoff2 = raw_showoff.copy()
+        #     xy1, w1 = feature.get_global_xy_w()
+        #
+        #     # if all(distances>FACTOR):
+        #     #     continue
+        #
+        #     cv2.circle(showoff, tuple(xy1), w1, (0, 0, 255), thickness=1)
+        #     cv2.circle(showoff2, tuple(xy1), w1, (0, 0, 255), thickness=1)
+        #
+        #     feature.show("test")
+        #     for idx, (match, distance) in enumerate(zip(matchs, distancess)):
+        #         # if distance>FACTOR:
+        #         #     continue
+        #         other_feature = image_train.get_all_features()[match]
+        #         xy2_, w2 = other_feature.get_global_xy_w()
+        #         xy2 = xy2_ + [offset, 0]  # do not += !!!
+        #         other_feature.show("train")
+        #         print distance
+        #
+        #         score___ = (1 - (feature._score * other_feature._score) / (15.0 ** 2))
+        #         rating = int(score___ * 128 + 127)
+        #         distance_ = int(1 / (distance + 1) * 10)
+        #         # print distance, distance_, rating, feature._score, other_feature._score
+        #         cv2.line(showoff, tuple(xy1), tuple(xy2), (0, 0, rating), distance_)
+        #         cv2.line(showoff2, tuple(xy1), tuple(xy2), (0, 0, rating), distance_)
+        #         cv2.circle(showoff, tuple(xy2), w2, (0, 0, 255), thickness=1)
+        #         cv2.circle(showoff2, tuple(xy2), w2, (0, 0, 255), thickness=1)
+        #
+        #         # if (xy2_-xy1).dot(xy2_-xy1) < 1000:
+        #         cv2.imshow("", showoff2)
+        #         k = cv2.waitKey(0)
+        #         if k == 27:  # wait for ESC key to exit
+        #             cv2.destroyAllWindows()
+        #             exit(0)
+        #             # def get_stripe(img, f):
+        #             #     return cv2.resize(img[f._y - 5:f._y + 5 + 1, f._x - f._w:f._x + f._w + 1], (0, 0), fx=10, fy=10,
+        #             #                       interpolation=cv2.INTER_NEAREST)
+        #             #
+        #             # first_stripe = get_stripe(image_test.get_processed(), feature)
+        #             # second_stripe = get_stripe(image_train.get_processed(), other_feature)
+        #             # cv2.imshow("A", first_stripe)
+        #             # cv2.imshow("B", second_stripe)
+        #
+        # cv2.imshow("", showoff)
+        # cv2.imwrite("../data/outputs/jej/_" + str(random.random()) + "cool.jpg", showoff,
+        #             [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+        # cv2.waitKey()
 
 
 class Feature(object):
@@ -840,7 +871,6 @@ class Image(object):
         :rtype: list[Feature]
         """
         if self._all_features is None:
-
             self._all_features = [feature for pyramid_level in self.get_pyramid() for feature in
                                   pyramid_level.get_features()]
             self._image_gray = None
