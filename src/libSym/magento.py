@@ -1,8 +1,13 @@
 import os
+from multiprocessing import Pool
+
+import gc
 import scipy as sp
 import cv2
 import numpy as np
 import random
+
+from multiprocessing import cpu_count
 from sklearn.neighbors import KNeighborsClassifier
 import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
@@ -10,7 +15,7 @@ from os import walk
 from os.path import join, basename
 
 LOG_LEVEL = 4
-
+CPU_COUNT = 8
 
 def detect_local_minima(arr):
     neighborhood = morphology.generate_binary_structure(len(arr.shape), 2)
@@ -57,6 +62,35 @@ def print_verbose(str):
 def print_result(str):
     if LOG_LEVEL >= 0:
         _print_sth("RESULT", str)
+
+
+def predict(data):
+    try:
+        image, clf = data
+        features_all = image.get_all_features()
+        descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
+        assert len(descriptors_all.shape) == 2
+        # clf.show_match(image,descriptors_all)
+        # descriptors = create_descriptors(filename)
+        # if method == 'default':
+        i = int(sp.stats.mstats.mode(clf._classifier.predict(descriptors_all))[0][0])
+        print_result(("HIT  " if i == image.get_building().get_identifier() else "MISS ") + " " + str(image))
+        return i
+    except Exception:
+        print 'failed'
+    # clf.append(result)
+    # elif method == 'strict':
+    #    pp = self._classifier.predict_proba(descriptors)
+    #    chances = np.zeros(pp.shape[1])
+    #    for p in pp:
+    #        if np.max(p) > 0.5:
+    #            chances[np.argmax(p)] += 1000.0 / len(self._train_image_ids[self._train_image_ids == np.argmax(p)])
+    #    np.argmax(chances)
+    # else:
+    #    raise Exception('Unknown predict method')
+    real = image.get_building().get_identifier()
+    # print_info("["+str(round(float(idx)/len(images),2))+"%] "+("HIT  " if real == result else "MISS ")+"| Image " + str(image) + " predicted: " + str(result) + ", real: " + str(
+    #         real))
 
 
 class MagentoClassifier(object):
@@ -164,27 +198,12 @@ class MagentoClassifier(object):
         """
         print_info("Starting predict process")
         results = []
-        for image in images:
-            features_all = image.get_all_features()
-            descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
-            assert len(descriptors_all.shape) == 2
-            # distances, matches = self._classifier.kneighbors(descriptors_all, n_neighbors=N_NEIGHBORS, return_distance=True)
-            # self.show_match(image, matches, distances)
-            # descriptors = create_descriptors(filename)
-            # if method == 'default':
-            result = int(sp.stats.mstats.mode(self._classifier.predict(descriptors_all))[0][0])
-            results.append(result)
-            # elif method == 'strict':
-            #    pp = self._classifier.predict_proba(descriptors)
-            #    chances = np.zeros(pp.shape[1])
-            #    for p in pp:
-            #        if np.max(p) > 0.5:
-            #            chances[np.argmax(p)] += 1000.0 / len(self._train_image_ids[self._train_image_ids == np.argmax(p)])
-            #    np.argmax(chances)
-            # else:
-            #    raise Exception('Unknown predict method')
-            print_info("Image " + str(image) + " predicted: " + str(result) + ", real: " + str(
-                    image.get_building().get_identifier()))
+        pool = Pool(CPU_COUNT)
+        data = [(image, self) for image in images]
+        results = pool.map(predict, data)
+        pool.close()
+        pool = None
+        gc.collect()
         return results
 
     def score(self, images):
@@ -197,12 +216,13 @@ class MagentoClassifier(object):
         y_true = [image.get_building().get_identifier() for image in images]
         return np.sum((np.array(y_true) - np.array(y_pred)) == 0) / float(len(y_pred))
 
-    def show_match(self, image_test, matches, distances):
+    def show_match(self, image_test, descriptors_all):
         """
         :type image_test: Image
         :type matches: np.array
         :type distances: np.array
         """
+        distances, matches = self._classifier.kneighbors(descriptors_all, return_distance=True)
         image_train = self._buildings[0].get_images()[0]
         """
         :type image_train: Image
@@ -491,6 +511,7 @@ class PyramidLevel(object):
 
         # print "Hello"
         img = self._grayscale
+        # self._grayscale = None
 
         sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
         sobel_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
@@ -547,6 +568,8 @@ class PyramidLevel(object):
         """
         if self._features is None:
             self._extract_features()
+            self._data = None
+            self._grayscale = None
         return self._features
 
     def _extract_features(self):
@@ -564,6 +587,7 @@ class PyramidLevel(object):
         cache_path = os.path.abspath(join(FEATURE_CACHE_PATH, cache_file_name))
 
         try:
+            # raise Exception()
             data = np.load(cache_path + '.npy')
             minimums = data[:, :2]
             min_vals = data[:, 2]
@@ -578,10 +602,12 @@ class PyramidLevel(object):
 
             heatmap = np.ones(angles.shape) * DISALLOWED_AREA_CONSTANT
 
-            kernel_x = cv2.getGaussianKernel(Feature.WIDTH * 2, 0)[np.newaxis, :]
-            kernel_y = cv2.getGaussianKernel(Feature.HEIGHT * 2 + 1, 0)[:, np.newaxis]
-            kernel = kernel_x * kernel_y
-            kernel = kernel[:, kernel.shape[1] / 2:]
+            # kernel_x = cv2.getGaussianKernel(Feature.WIDTH * 2, 0)[np.newaxis, :]
+            # kernel_y = cv2.getGaussianKernel(Feature.HEIGHT * 2 + 1, 0)[:, np.newaxis]
+            # kernel = kernel_x * kernel_y
+            # kernel = kernel[:, kernel.shape[1] / 2:]
+
+            window_size = w * 2 * (h * 2 + 1)
 
             # cv2.imshow("nja", img)
             for y in range(y_offset + h, angles.shape[0] - h - y_offset):
@@ -589,12 +615,15 @@ class PyramidLevel(object):
                 weight_line = norms[y - h:y + h + 1, :]
                 for x in range(x_offset + w, angles.shape[1] - w - x_offset):
                     if allowed_area[y, x]:
-                        trace_scan_line_b4 = _get_left(scan_line, x, w) + _get_right(scan_line, x, w)
-                        trace_scan_line_b4 = np.minimum(trace_scan_line_b4, 360 - trace_scan_line_b4)
+                        trace_scan_line_b4 = _get_left(scan_line, x, w) + _get_right(scan_line, x,
+                                                                                     w)  # npr ak imamo [ 65 21 172 -156 -25 -60] onda ddobijemo [  65  21  172] + [ -60 -25 -156] = [  5   -4   16]
+                        # [  5   -4   16]
+                        trace_scan_line_b4 = np.minimum(trace_scan_line_b4,
+                                                        360 - trace_scan_line_b4)  # primjer [179] i [179] su udaljeni za 2 a ne za 358 stupnjeva
                         trace_weight_line = (_get_left(weight_line, x, w) * _get_right(weight_line, x, w))
                         # weight_line_sum = np.sum(trace_weight_line)
 
-                        trace_scan_line_b4 = np.abs(trace_scan_line_b4)
+                        trace_scan_line_b4 = np.abs(trace_scan_line_b4)  # [  5   -4   16] -> [  5   4   16]
 
                         trace_scan_line = trace_scan_line_b4.copy()
                         trace_scan_line *= trace_weight_line  # * kernel[:,:,0]
@@ -605,28 +634,26 @@ class PyramidLevel(object):
                             continue
                         dot /= trace_weight_line_sum
                         dot /= len(trace_scan_line)
-                        maximal_trace_weight_line_sum = trace_weight_line.shape[0] * trace_weight_line.shape[1]
-                        dot += np.sqrt(1 - trace_weight_line_sum / maximal_trace_weight_line_sum) * 10
+                        dot += np.sqrt(1 - trace_weight_line_sum / window_size) * 10
 
                         # dot = np.sqrt(trace_scan_line.dot(trace_scan_line))  # / weight_line_sum
-                        dot = dot / len(trace_scan_line)
+                        dot /= len(trace_scan_line)
                         heatmap[y, x] = dot
 
-                        if dot < 0:
-                            img = cv2.cvtColor(self._grayscale.copy(), cv2.COLOR_GRAY2BGR)
-                            cv2.rectangle(img, (x - w, y - h), (x + w, y + h + 1), color=(0, 0, 255))
-                            cv2.imshow("jej", img)
-                            # cv2.imshow("jej",pyramid_level._grayscale[y-h:y+h,x-w:x+w])
-                            cv2.waitKey()
-                            # plt.subplot(122),plt.imshow(scan_line[:,x-w:x+w],'gray'),plt.show()
-                            print "score", dot, x, y
-                            print np.round(_get_left(scan_line, x, w).astype(np.int)), "left scan"
-                            print np.round(_get_left(weight_line, x, w), 2), "left scan weights"
-                            print np.round(-_get_right(scan_line, x, w).astype(np.int)), "right scan"
-                            print np.round(_get_right(weight_line, x, w), 2), "right scan weights"
-                            print np.round(trace_scan_line_b4.astype(np.int)), "trace"
-                            print np.round(trace_scan_line, 2), "trace after"
-                            print np.round(trace_weight_line, 2), "factors"
+                        # if dot < 0:
+                        #     img = cv2.cvtColor(self._grayscale.copy(), cv2.COLOR_GRAY2BGR)
+                        #     cv2.rectangle(img, (x - w, y - h), (x + w, y + h + 1), color=(0, 0, 255))
+                        #     cv2.imshow("jej", img)
+                        #     # cv2.imshow("jej",pyramid_level._grayscale[y-h:y+h,x-w:x+w])
+                        #     cv2.waitKey()
+                        #     # plt.subplot(122),plt.imshow(scan_line[:,x-w:x+w],'gray'),plt.show()
+                        #     print "score", dot, x, y
+                        #     print np.round(_get_left(scan_line, x, w).astype(np.int)), "left scan"
+                        #     print np.round(_get_left(weight_line, x, w), 2), "left scan weights"
+                        #     print np.round(-_get_right(scan_line, x, w).astype(np.int)), "right scan"
+                        #     print np.round(_get_right(weight_line, x, w), 2), "right scan weights"
+                        #     print np.round(trace_scan_line, 2), "trace after"
+                        #     print np.round(trace_weight_line, 2), "factors"
 
             filtered_heatmap = heatmap[heatmap != DISALLOWED_AREA_CONSTANT]
             # if len(filtered_heatmap) > 0:
@@ -761,7 +788,6 @@ class Image(object):
         return self._image_rgb
 
     def _lazy_load(self):
-        print_info("Preparing image: " + str(self))
         image = self._letterbox_image(cv2.imread(self._image_path))
 
         if len(image.shape) != 3:
@@ -814,8 +840,13 @@ class Image(object):
         :rtype: list[Feature]
         """
         if self._all_features is None:
+
             self._all_features = [feature for pyramid_level in self.get_pyramid() for feature in
                                   pyramid_level.get_features()]
+            self._image_gray = None
+            self._image_rgb = None
+            self._image_processed = None
+            self._pyramid = None
         return self._all_features
 
 
