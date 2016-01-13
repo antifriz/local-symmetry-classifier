@@ -19,7 +19,7 @@ from scipy import ndimage
 LOG_LEVEL = 4
 CPU_COUNT = 8
 SHOW_DETECTIONS = False
-
+DATA_PATH = '../../data'
 
 def detect_local_minima(arr):
     neighborhood = morphology.generate_binary_structure(len(arr.shape), 2)
@@ -184,6 +184,7 @@ class MagentoClassifier(object):
             score = mc.score(test_images,method=method)
             print_result("Iteration " + str(iter) + "/" + str(iterations) + " score is " + str(score[method_idx]) +" (all scores: "+str(zip(METHODS,score))+")")
             ult_score += score
+            seed +=1 if seed != -1 else 0
             print_result("Ultimate score so far is " + str(ult_score[method_idx] / iter)+" (all scores: "+str(zip(METHODS,ult_score/iter))+")")
         score_iterations = ult_score / iterations
 
@@ -440,55 +441,20 @@ class Feature(object):
         h = Feature.HEIGHT
 
         angles, weights_all, _ = self._pyramid_level.get_data()
-        scan_lines = angles[y - h: y + h + 1, x - w:x + w]
-        weights = weights_all[y - h: y + h + 1, x - w:x + w]
+        scan_lines = (angles[y - h: y + h + 1, x - w:x + w] + 202.5)%360
+        #weights = weights_all[y - h: y + h + 1, x - w:x + w]
 
-        # left, right = _get_left(scan_lines, x, w), _get_right(scan_lines, x, w)
-        # left_w, right_w = _get_left(weights, x, w), _get_right(weights, x, w)
-
-
-        # sum = left - right
-        # sum = np.minimum(sum, 360 - sum)
-        # sum_w = left_w + right_w
-
-        # avg_line = (sum) / 2
-        # avg_line_w = (sum_w) / 2
-
-        # self._descriptor = avg_line.ravel()
-        # return
 
         splitted_scan_lines = np.split(scan_lines, CHUNKS, axis=1)
-        splitted_weights = np.split(scan_lines, CHUNKS, axis=1)
+        #splitted_weights = np.split(weights, CHUNKS, axis=1)
 
-        hs = []
-        for chunk_lines, chunk_weights in zip(splitted_scan_lines, splitted_weights):
-            hs.append(np.histogram(chunk_lines, bins=8, range=(-180, 180), weights=chunk_weights)[0])
+        # hs =
+        # for chunk_lines, chunk_weights in zip(splitted_scan_lines, splitted_weights):
+        #     c_lines = (chunk_lines+180+45/2.0)%360
+        #     hs.append([np.histogram(c_lines, bins=8, range=(0, 360))[0]
 
-        self._descriptor = np.array(hs).flatten()
+        self._descriptor = np.array([np.histogram(c_lines, bins=8, range=(0, 360))[0] for c_lines in splitted_scan_lines]).flatten()
         return
-
-        # print avg_line[:, :]
-        half = avg_line.shape[1] / 2.0
-
-        h1 = np.histogram(avg_line[:, :half], bins=8, range=(-180, 180), weights=avg_line_w[:, :half], density=True)[0]
-        h2 = np.histogram(avg_line[:, half:], bins=8, range=(-180, 180), weights=avg_line_w[:, half:], density=True)[0]
-
-        # print h1
-        # print h2
-
-        vals = np.append(h1, h2)
-        self._descriptor = vals
-
-        # print vals
-        #
-        # exit(0)
-        # raw = (avg_line < np.average(avg_line)).astype(float)
-        # # raw *= c1
-        # ravel = np.ravel(raw)
-        # # assert ravel.shape[0] == (h * 2 + 1) * w, "" + str(ravel.shape) + " " + str((h * 2 + 1) * w)
-        # # np.append(ravel,feature.get_global_xy_w()[0])
-        # self._descriptor = ravel
-        # # return sp.ndimage.interpolation.zoom(raw, 128 / float(w), order=3, mode='constant')
 
     def get_pyramid_level(self):
         """
@@ -679,7 +645,7 @@ class PyramidLevel(object):
         DIFFERENCE_THRESHOLD = 10
         IMAGE_BORDER_IGNORE_RATIO = 0.05
 
-        FEATURE_CACHE_PATH = '../data/cache'
+        FEATURE_CACHE_PATH = join(DATA_PATH,'cache')
 
         cache_file_name = str(self.get_image().__repr__() + str(self.get_scale())) + ".cache"
 
