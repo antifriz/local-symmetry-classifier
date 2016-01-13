@@ -752,12 +752,9 @@ class PyramidLevel(object):
         """
         return self._image
 
-
 class Image(object):
     DEFAULT_WIDTH = 640
     DEFAULT_HEIGHT = 480
-    PYRAMID_RATIO = np.sqrt(2)
-    PYRAMID_LIMIT = 10
 
     def __init__(self, image_path):
         self._image_path = image_path
@@ -765,7 +762,7 @@ class Image(object):
         self._image_rgb = None
         self._image_processed = None
         self._building = None  # type: Building
-        self._pyramid = None
+
         self._all_features = None  # type: list[Feature]
 
     def __repr__(self):
@@ -780,34 +777,6 @@ class Image(object):
         if self._image_gray is None:
             self._lazy_load()
         return self._image_gray
-
-    def get_pyramid(self):
-        """
-
-        :rtype: PyramidLevel
-        """
-        if self._pyramid is None:
-            self._init_pyramid()
-        return self._pyramid
-
-    def _init_pyramid(self):
-        self._pyramid = []
-        current = self.get_processed()
-        scale = 1.0
-        while current.shape[0] > Image.PYRAMID_LIMIT and current.shape[1] > Image.PYRAMID_LIMIT:
-            self._pyramid.append(PyramidLevel(self, current, scale))
-            current = Image.pyr_down(current)
-            scale /= 2
-
-    @staticmethod
-    def pyr_down(image):
-        """
-
-        :param image: np.ndarray
-        :rtype: np.ndarray
-        """
-        return cv2.pyrDown(image)  # , dstsize=(
-        # int(image.shape[0] / Image.PYRAMID_RATIO), int(image.shape[1] / Image.PYRAMID_RATIO)))
 
     def get_rgb(self):
         """
@@ -866,8 +835,18 @@ class Image(object):
         cv2.waitKey()
 
     def get_all_features(self):
-        """
+        pass
 
+class PyramidImage(Image):
+    PYRAMID_RATIO = np.sqrt(2)
+    PYRAMID_LIMIT = 10
+
+    def __init__(self, image_path):
+        super(PyramidImage,self).__init__(image_path)
+        self._pyramid = None
+
+    def get_all_features(self):
+        """
         :rtype: list[Feature]
         """
         if self._all_features is None:
@@ -879,6 +858,33 @@ class Image(object):
             self._pyramid = None
         return self._all_features
 
+    def get_pyramid(self):
+        """
+
+        :rtype: PyramidLevel
+        """
+        if self._pyramid is None:
+            self._init_pyramid()
+        return self._pyramid
+
+    def _init_pyramid(self):
+        self._pyramid = []
+        current = self.get_processed()
+        scale = 1.0
+        while current.shape[0] > PyramidImage.PYRAMID_LIMIT and current.shape[1] > PyramidImage.PYRAMID_LIMIT:
+            self._pyramid.append(PyramidLevel(self, current, scale))
+            current = PyramidImage.pyr_down(current)
+            scale /= 2
+
+    @staticmethod
+    def pyr_down(image):
+        """
+
+        :param image: np.ndarray
+        :rtype: np.ndarray
+        """
+        return cv2.pyrDown(image)  # , dstsize=(
+        # int(image.shape[0] / PyramideImage.PYRAMID_RATIO), int(image.shape[1] / PyramidImage.PYRAMID_RATIO)))
 
 class Building(object):
     def __init__(self, identifier, name, images):
@@ -967,7 +973,7 @@ class ImageLoader2(object):
         for idx, (name, image_paths) in enumerate(self._image_files.iteritems()):
             images = []
             for image_path in image_paths:
-                image = Image(image_path)
+                image = PyramidImage(image_path)
                 images.append(image)
 
             building = Building(idx, name, images)
