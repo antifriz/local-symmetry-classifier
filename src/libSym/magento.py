@@ -943,7 +943,7 @@ class Building(object):
 class ImageLoader2(object):
     @staticmethod
     def is_image_file(path):
-        return any([path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif']])
+        return any([path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.JPG']])
 
     SWARM = "swarm"
 
