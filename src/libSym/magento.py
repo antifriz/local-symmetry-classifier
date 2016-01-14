@@ -16,10 +16,18 @@ import scipy.ndimage.morphology as morphology
 from os import walk
 from os.path import join, basename
 from scipy import ndimage
+
 LOG_LEVEL = 4
 CPU_COUNT = 8
 SHOW_DETECTIONS = False
-DATA_PATH = '../../data'
+DATA_PATH = None
+USE_CACHE = True
+
+SWARM = 'swarm'
+CACHE = 'cache'
+
+SUPPORTED_IMAGE_FORMATS = ['.jpg', '.jpeg', '.png', '.gif', '.JPG']
+
 
 def detect_local_minima(arr):
     neighborhood = morphology.generate_binary_structure(len(arr.shape), 2)
@@ -67,76 +75,75 @@ def print_result(str):
     if LOG_LEVEL >= 0:
         _print_sth("RESULT", str)
 
+
 METHODS = ['mode', 'mode50', 'sum', 'mode2times']
 
+
 def predict(data):
-    try:
-        image, clf, progress, method = data  #type: Image,MagentoClassifier,float,str
-        progress_str = str(int(progress * 100))
-        perc_str = "[" + str(" " * (3 - len(progress_str)) + progress_str) + "%] | "
-        prefix = " " * len(perc_str)
-        print_info(perc_str + "Predicting for image " + str(image))
+    #try:
+    image, clf, progress, method = data  # type: Image,MagentoClassifier,float,str
+    progress_str = str(int(progress * 100))
+    perc_str = "[" + str(" " * (3 - len(progress_str)) + progress_str) + "%] | "
+    prefix = " " * len(perc_str)
+    print_info(perc_str + "Predicting for image " + str(image))
 
+    features_all = image.get_all_features()  # type: list[Feature]
 
-        features_all = image.get_all_features() #type: list[Feature]
+    descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
+    assert len(descriptors_all.shape) == 2
+    if SHOW_DETECTIONS:
+        clf.show_match(image, descriptors_all)
+    # descriptors = create_descriptors(filename)
+    predicted_proba = clf._classifier.predict_proba(descriptors_all)
+    argmax_proba = np.argmax(predicted_proba, axis=1)
+    max_proba = np.max(predicted_proba, axis=1)
+    argsorted_proba = np.argsort(predicted_proba, axis=1)
+    if predicted_proba.shape[1]>1:
+        secondmax_proba = np.sort(predicted_proba, axis=1)[:, -2]
+    calc_mode = lambda x: int(clf._classes[int(sp.stats.mstats.mode(x)[0][0])])
 
+    mode_method = calc_mode(argmax_proba)
 
+    sum_method = int(clf._buildings[np.argmax(np.sum(predicted_proba, axis=0))].get_identifier())
 
-        descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
-        assert len(descriptors_all.shape) == 2
-        if SHOW_DETECTIONS:
-            clf.show_match(image, descriptors_all)
-        # descriptors = create_descriptors(filename)
-        predicted_proba = clf._classifier.predict_proba(descriptors_all)
-        argmax_proba = np.argmax(predicted_proba,axis=1)
-        max_proba = np.max(predicted_proba,axis=1)
-        argsorted_proba = np.argsort(predicted_proba,axis=1)
-        secondmax_proba = np.sort(predicted_proba,axis=1)[:,-2]
-        calc_mode = lambda x: int(clf._classes[int(sp.stats.mstats.mode(x)[0][0])])
+    trimmed = argmax_proba[max_proba >= 0.5]
+    if trimmed.shape[0] > 0:
+        mode_50_method = calc_mode(trimmed)
+    else:
+        mode_50_method = mode_method
+        print_info(prefix + " fallback to mode method")
 
+    mode_2_times = calc_mode(argmax_proba[max_proba >= 2 * secondmax_proba]) if predicted_proba.shape[1]>1 else -1
 
-        mode_method = calc_mode(argmax_proba)
+    if method == 'mode':
+        i = mode_method
+    elif method == 'mode50':
+        i = mode_50_method
+    elif method == 'sum':
+        i = sum_method
+    elif method == 'mode2times':
+        i = mode_2_times
+    else:
+        raise Exception()
+    res = np.array([mode_method, mode_50_method, sum_method, mode_2_times])
+    name = lambda x: filter(lambda b: b.get_identifier() == x, clf._buildings)[0].get_name()
+    real_i = image.get_building().get_identifier()
+    if i != real_i:
+        hit_by = list(np.array(METHODS)[np.where(res == real_i)])
+        print_result(perc_str + "MISS " + name(i) + " =/= " + str(image) + " " + str(
+            "hit by " + ', '.join(hit_by) if len(hit_by) > 0 else ""))
 
-        sum_method = int(clf._buildings[np.argmax(np.sum(predicted_proba,axis=0))].get_identifier())
-
-        trimmed = argmax_proba[max_proba >= 0.5]
-        if trimmed.shape[0]>0:
-            mode_50_method = calc_mode(trimmed)
-        else:
-            mode_50_method = mode_method
-            print_info(prefix+" fallback to mode method")
-
-        mode_2_times = calc_mode(argmax_proba[max_proba>=2*secondmax_proba])
-
-
-        if method == 'mode':
-            i = mode_method
-        elif method == 'mode50':
-            i = mode_50_method
-        elif method == 'sum':
-            i = sum_method
-        elif method == 'mode2times':
-            i = mode_2_times
-        else:
-            raise Exception()
-        res = np.array([mode_method,mode_50_method,sum_method,mode_2_times])
-        name = lambda x:filter(lambda b: b.get_identifier()==x,clf._buildings)[0].get_name()
-        real_i = image.get_building().get_identifier()
-        if i != real_i:
-            hit_by = list(np.array(METHODS)[np.where(res == real_i)])
-            print_result(perc_str + "MISS "+name(i)+" =/= "+str(image)+" " + str( "hit by " + ', '.join(hit_by) if len(hit_by) > 0 else ""))
-
-            print_info(perc_str + name(mode_method) + " <- mode method") if i !=mode_method else None
-            print_info(perc_str + name(sum_method) + " <- sum method") if i !=sum_method else None
-            print_info(perc_str + name(mode_50_method) + " <- mode 50 method") if i !=mode_50_method else None
-            print_info(perc_str + name(mode_2_times) + " <- mode 2 times method") if i !=mode_2_times else None
-            #clf.show_match(image, descriptors_all)
-        else:
-            print_result(prefix + "HIT")
-        # print_result(("HIT  " if i == image.get_building().get_identifier() else "MISS ") + " " + str(image))
-        return res
-    except Exception as e:
-        raise e
+        print_info(perc_str + name(mode_method) + " <- mode method") if i != mode_method else None
+        print_info(perc_str + name(sum_method) + " <- sum method") if i != sum_method else None
+        print_info(perc_str + name(mode_50_method) + " <- mode 50 method") if i != mode_50_method else None
+        print_info(perc_str + name(mode_2_times) + " <- mode 2 times method") if i != mode_2_times else None
+        # clf.show_match(image, descriptors_all)
+    else:
+        print_result(prefix + "HIT")
+    # print_result(("HIT  " if i == image.get_building().get_identifier() else "MISS ") + " " + str(image))
+    return res
+    #except Exception as e:
+    #    raise e
     # clf.append(result)
     # elif method == 'strict':
     #    pp = self._classifier.predict_proba(descriptors)
@@ -159,7 +166,7 @@ class MagentoClassifier(object):
     @staticmethod
     def test_on_dataset(buildings, test_images_per_building=1, train_images_per_building=-1, class_count=-1,
                         n_neighbors=N_NEIGHBORS,
-                        weights=KNN_WEIGHTS,method='mode', iterations=1, seed=-1):
+                        weights=KNN_WEIGHTS, method='mode', iterations=1, seed=-1):
         """
         :type test_images_per_building: int
         :type train_images_per_building: int
@@ -169,7 +176,7 @@ class MagentoClassifier(object):
         :rtype: float
         """
         if method not in METHODS:
-            raise Exception('Pick valid method from '+str(METHODS))
+            raise Exception('Pick valid method from ' + str(METHODS))
         method_idx = METHODS.index(method)
         ult_score = np.zeros(len(METHODS))
         for iter in range(1, iterations + 1):
@@ -181,14 +188,17 @@ class MagentoClassifier(object):
                                                                                       seed=seed)
             mc = MagentoClassifier(n_neighbors=n_neighbors, weights=weights)
             mc.fit(train_images)
-            score = mc.score(test_images,method=method)
-            print_result("Iteration " + str(iter) + "/" + str(iterations) + " score is " + str(score[method_idx]) +" (all scores: "+str(zip(METHODS,score))+")")
+            score = mc.score(test_images, method=method)
+            print_result("Iteration " + str(iter) + "/" + str(iterations) + " score is " + str(
+                    score[method_idx]) + " (all scores: " + str(zip(METHODS, score)) + ")")
             ult_score += score
-            seed +=1 if seed != -1 else 0
-            print_result("Ultimate score so far is " + str(ult_score[method_idx] / iter)+" (all scores: "+str(zip(METHODS,ult_score/iter))+")")
+            seed += 1 if seed != -1 else 0
+            print_result("Ultimate score so far is " + str(ult_score[method_idx] / iter) + " (all scores: " + str(
+                zip(METHODS, ult_score / iter)) + ")")
         score_iterations = ult_score / iterations
 
-        print_result("Ultimate score is " + str(score_iterations[method_idx])+" (all scores: "+str(zip(METHODS,score_iterations))+")")
+        print_result("Ultimate score is " + str(score_iterations[method_idx]) + " (all scores: " + str(
+            zip(METHODS, score_iterations)) + ")")
         return score_iterations
 
     @staticmethod
@@ -227,10 +237,9 @@ class MagentoClassifier(object):
 
     def __init__(self, n_neighbors=N_NEIGHBORS, weights=KNN_WEIGHTS):
         self._classifier = KNeighborsClassifier(n_neighbors=n_neighbors, weights=weights)
-        self._buildings = None # type: None|list[Building]
-        self._classes = None # type: None|list[int]
-        self._features_all = None # type: None|list[Feature]
-
+        self._buildings = None  # type: None|list[Building]
+        self._classes = None  # type: None|list[int]
+        self._features_all = None  # type: None|list[Feature]
 
     def fit(self, images):
         """
@@ -239,9 +248,9 @@ class MagentoClassifier(object):
         """
         print_info("Starting fitting process")
         assert all([image.get_building() is not None for image in images])
-        self._buildings = list(set( [image.get_building() for image in images]))
+        self._buildings = list(set([image.get_building() for image in images]))
         self._buildings.sort(key=Building.get_identifier)
-        self._classes = map(Building.get_identifier,self._buildings)
+        self._classes = map(Building.get_identifier, self._buildings)
 
         features_all = []
         for image in images:
@@ -263,7 +272,7 @@ class MagentoClassifier(object):
 
         self._classifier.fit(descriptors_all, classes_all)
 
-    def predict(self, images,method='mode'):
+    def predict(self, images, method='mode'):
         """
 
         :type images: list[Image]
@@ -271,9 +280,9 @@ class MagentoClassifier(object):
         """
         print_info("Starting predict process")
         size = float(len(images))
-        data = [(image, self, idx / size,method) for idx, image in enumerate(images)]
+        data = [(image, self, idx / size, method) for idx, image in enumerate(images)]
         if CPU_COUNT == 1:
-            return map(predict, data)
+            return [predict(d) for d in data]
         else:
             pool = Pool(CPU_COUNT)
             results = pool.map(predict, data)
@@ -289,8 +298,8 @@ class MagentoClassifier(object):
         """
         print_info("Starting scoring process")
         y_pred = np.array(self.predict(images, method=method))
-        y_true = np.array([image.get_building().get_identifier() for image in images])[:,np.newaxis]
-        return np.sum((y_true - y_pred) == 0,axis=0) / float(y_pred.shape[0])
+        y_true = np.array([image.get_building().get_identifier() for image in images])[:, np.newaxis]
+        return np.sum((y_true - y_pred) == 0, axis=0) / float(y_pred.shape[0])
 
     def show_match(self, image_test, descriptors_all):
         """
@@ -399,7 +408,7 @@ class MagentoClassifier(object):
                 #             # cv2.imshow("B", second_stripe)
                 #
                 # cv2.imshow("", showoff)
-                # cv2.imwrite("../data/outputs/jej/_" + str(random.random()) + "cool.jpg", showoff,
+                # cv2.imwrite("../buildings-data/outputs/jej/_" + str(random.random()) + "cool.jpg", showoff,
                 #             [int(cv2.IMWRITE_JPEG_QUALITY), 100])
                 # cv2.waitKey()
 
@@ -441,19 +450,20 @@ class Feature(object):
         h = Feature.HEIGHT
 
         angles, weights_all, _ = self._pyramid_level.get_data()
-        scan_lines = (angles[y - h: y + h + 1, x - w:x + w] + 202.5)%360
-        #weights = weights_all[y - h: y + h + 1, x - w:x + w]
+        scan_lines = (angles[y - h: y + h + 1, x - w:x + w] + 202.5) % 360
+        # weights = weights_all[y - h: y + h + 1, x - w:x + w]
 
 
         splitted_scan_lines = np.split(scan_lines, CHUNKS, axis=1)
-        #splitted_weights = np.split(weights, CHUNKS, axis=1)
+        # splitted_weights = np.split(weights, CHUNKS, axis=1)
 
         # hs =
         # for chunk_lines, chunk_weights in zip(splitted_scan_lines, splitted_weights):
         #     c_lines = (chunk_lines+180+45/2.0)%360
         #     hs.append([np.histogram(c_lines, bins=8, range=(0, 360))[0]
 
-        self._descriptor = np.array([np.histogram(c_lines, bins=8, range=(0, 360))[0] for c_lines in splitted_scan_lines]).flatten()
+        self._descriptor = np.array(
+                [np.histogram(c_lines, bins=8, range=(0, 360))[0] for c_lines in splitted_scan_lines]).flatten()
         return
 
     def get_pyramid_level(self):
@@ -645,14 +655,15 @@ class PyramidLevel(object):
         DIFFERENCE_THRESHOLD = 10
         IMAGE_BORDER_IGNORE_RATIO = 0.05
 
-        FEATURE_CACHE_PATH = join(DATA_PATH,'cache')
+        FEATURE_CACHE_PATH = join(DATA_PATH, CACHE)
 
-        cache_file_name = str(self.get_image().__repr__() + str(self.get_scale())) + ".cache"
+        cache_file_name = str(self.get_image().__repr__() + str(self.get_scale()))
 
         cache_path = os.path.abspath(join(FEATURE_CACHE_PATH, cache_file_name))
 
         try:
-            raise Exception()
+            if not USE_CACHE:
+                raise Exception()
             data = np.load(cache_path + '.npy')
             minimums = data[:, :2]
             min_vals = data[:, 2]
@@ -788,6 +799,7 @@ class PyramidLevel(object):
         """
         return self._image
 
+
 class Image(object):
     DEFAULT_WIDTH = 640
     DEFAULT_HEIGHT = 480
@@ -873,12 +885,13 @@ class Image(object):
     def get_all_features(self):
         pass
 
+
 class PyramidImage(Image):
     PYRAMID_RATIO = np.sqrt(2)
     PYRAMID_LIMIT = 10
 
     def __init__(self, image_path):
-        super(PyramidImage,self).__init__(image_path)
+        super(PyramidImage, self).__init__(image_path)
         self._pyramid = None
 
     def get_all_features(self):
@@ -891,9 +904,9 @@ class PyramidImage(Image):
             pyr_levels = [feature.get_pyramid_level().get_scale() for feature in self._all_features]
             pyr_levels = np.bincount(np.array((-np.log2(pyr_levels)).astype(int)))
             ii = np.nonzero(pyr_levels)[0]
-            pyr_levels = zip(ii,pyr_levels[ii])
+            pyr_levels = zip(ii, pyr_levels[ii])
 
-            print_info("Features count="+str(len(self._all_features))+" features in pyramids = "+ str(pyr_levels))
+            print_info("Features count=" + str(len(self._all_features)) + " features in pyramids = " + str(pyr_levels))
             self._image_gray = None
             self._image_rgb = None
             self._image_processed = None
@@ -928,15 +941,16 @@ class PyramidImage(Image):
         return cv2.pyrDown(image)  # , dstsize=(
         # int(image.shape[0] / PyramideImage.PYRAMID_RATIO), int(image.shape[1] / PyramidImage.PYRAMID_RATIO)))
 
+
 class PyramidFaceImage(PyramidImage):
     def __init__(self, image_path, cascade_path):
-        super(PyramidFaceImage,self).__init__(image_path)
+        super(PyramidFaceImage, self).__init__(image_path)
         self.cascade_path = cascade_path
 
     def _lazy_load(self):
         super(PyramidFaceImage, self)._lazy_load()
         face_cascade = cv2.CascadeClassifier(self.cascade_path)
-#        cv2.imshow('drek', self._image_rgb)
+        #        cv2.imshow('drek', self._image_rgb)
         faces = face_cascade.detectMultiScale(self._image_gray, 1.3, 5)
         if len(faces) == 0:
             print_warn('No face founds, defaulting to whole image region')
@@ -948,8 +962,9 @@ class PyramidFaceImage(PyramidImage):
             y = face[1]
             w = face[2]
             h = face[3]
-            self._image_gray = self._image_gray[y:y+h, x:x+w].copy()
-            self._image_rgb = self._image_rgb[y:y+h, x:x+w].copy()
+            self._image_gray = self._image_gray[y:y + h, x:x + w].copy()
+            self._image_rgb = self._image_rgb[y:y + h, x:x + w].copy()
+
 
 class Building(object):
     def __init__(self, identifier, name, images):
@@ -1020,18 +1035,21 @@ class Building(object):
 class ImageLoader(object):
     @staticmethod
     def is_image_file(path):
-        return any([path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.JPG']])
+        return any([path.endswith(ext) for ext in SUPPORTED_IMAGE_FORMATS])
 
-    SWARM = "swarm"
-
-    def __init__(self, data_path):
+    def __init__(self, data_path, haar_cascade=None):
         self._data_path = data_path
-        swarm_folder = join(self._data_path, ImageLoader.SWARM)
+        swarm_folder = join(self._data_path, SWARM)
+
+        cache_folder = join(self._data_path, CACHE)
+        if not os.path.exists(cache_folder):
+            os.mkdir(cache_folder)
 
         self._image_files = {
             basename(x[0]): [join(x[0], xx) for xx in x[2] if ImageLoader.is_image_file(join(x[0], xx))] for x
             in
             walk(swarm_folder) if x[0] != swarm_folder}
+        self._haar_cascade = haar_cascade  # type: str|None
 
     def get_image_files(self):
         return self._image_files
@@ -1042,12 +1060,9 @@ class ImageLoader(object):
         """
         buildings = []
         for idx, (name, image_paths) in enumerate(self._image_files.iteritems()):
-            images = []
-            for image_path in image_paths:
-                image = PyramidFaceImage(image_path, 'haarcascade_frontalface_default.xml')
-                # image = PyramidImage(image_path)
-                images.append(image)
-
+            images = [
+                PyramidImage(image_path) if not self._haar_cascade else PyramidFaceImage(image_path, self._haar_cascade)
+                for image_path in image_paths]
             building = Building(idx, name, images)
             buildings.append(building)
         return buildings
