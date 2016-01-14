@@ -395,7 +395,6 @@ class Feature(object):
         # self._descriptor = avg_line.ravel()
         # return
 
-
         splitted_scan_lines = np.split(scan_lines, CHUNKS, axis=1)
         splitted_weights = np.split(scan_lines, CHUNKS, axis=1)
 
@@ -618,7 +617,7 @@ class PyramidLevel(object):
         cache_path = os.path.abspath(join(FEATURE_CACHE_PATH, cache_file_name))
 
         try:
-            # raise Exception()
+            raise Exception()
             data = np.load(cache_path + '.npy')
             minimums = data[:, :2]
             min_vals = data[:, 2]
@@ -886,6 +885,29 @@ class PyramidImage(Image):
         return cv2.pyrDown(image)  # , dstsize=(
         # int(image.shape[0] / PyramideImage.PYRAMID_RATIO), int(image.shape[1] / PyramidImage.PYRAMID_RATIO)))
 
+class PyramidFaceImage(PyramidImage):
+    def __init__(self, image_path, cascade_path):
+        super(PyramidFaceImage,self).__init__(image_path)
+        self.cascade_path = cascade_path
+
+    def _lazy_load(self):
+        super(PyramidFaceImage, self)._lazy_load()
+        face_cascade = cv2.CascadeClassifier(self.cascade_path)
+#        cv2.imshow('drek', self._image_rgb)
+        faces = face_cascade.detectMultiScale(self._image_gray, 1.3, 5)
+        if len(faces) == 0:
+            print_warn('No face founds, defaulting to whole image region')
+            return
+        else:
+            face = faces[0]
+            print 'Face found:', face
+            x = face[0]
+            y = face[1]
+            w = face[2]
+            h = face[3]
+            self._image_gray = self._image_gray[y:y+h, x:x+w].copy()
+            self._image_rgb = self._image_rgb[y:y+h, x:x+w].copy()
+
 class Building(object):
     def __init__(self, identifier, name, images):
         """
@@ -973,7 +995,8 @@ class ImageLoader2(object):
         for idx, (name, image_paths) in enumerate(self._image_files.iteritems()):
             images = []
             for image_path in image_paths:
-                image = PyramidImage(image_path)
+                image = PyramidFaceImage(image_path, 'haarcascade_frontalface_default.xml')
+                # image = PyramidImage(image_path)
                 images.append(image)
 
             building = Building(idx, name, images)
