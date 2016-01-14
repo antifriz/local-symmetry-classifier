@@ -1017,7 +1017,7 @@ class Building(object):
         return self._identifier
 
 
-class ImageLoader2(object):
+class ImageLoader(object):
     @staticmethod
     def is_image_file(path):
         return any([path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.JPG']])
@@ -1026,10 +1026,10 @@ class ImageLoader2(object):
 
     def __init__(self, data_path):
         self._data_path = data_path
-        swarm_folder = join(self._data_path, ImageLoader2.SWARM)
+        swarm_folder = join(self._data_path, ImageLoader.SWARM)
 
         self._image_files = {
-            basename(x[0]): [join(x[0], xx) for xx in x[2] if ImageLoader2.is_image_file(join(x[0], xx))] for x
+            basename(x[0]): [join(x[0], xx) for xx in x[2] if ImageLoader.is_image_file(join(x[0], xx))] for x
             in
             walk(swarm_folder) if x[0] != swarm_folder}
 

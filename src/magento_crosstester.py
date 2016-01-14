@@ -4,7 +4,7 @@ from libSym.magento import *
 
 if __name__ == '__main__':
     magento.DATA_PATH = '../data'
-    image_loader = ImageLoader2(data_path=magento.DATA_PATH)
+    image_loader = ImageLoader(data_path=magento.DATA_PATH)
     buildings = image_loader.get_buildings()
 
     magento.LOG_LEVEL = 0
