@@ -395,7 +395,6 @@ class Feature(object):
         # self._descriptor = avg_line.ravel()
         # return
 
-
         splitted_scan_lines = np.split(scan_lines, CHUNKS, axis=1)
         splitted_weights = np.split(scan_lines, CHUNKS, axis=1)
 
@@ -618,7 +617,7 @@ class PyramidLevel(object):
         cache_path = os.path.abspath(join(FEATURE_CACHE_PATH, cache_file_name))
 
         try:
-            # raise Exception()
+            raise Exception()
             data = np.load(cache_path + '.npy')
             minimums = data[:, :2]
             min_vals = data[:, 2]
@@ -752,12 +751,9 @@ class PyramidLevel(object):
         """
         return self._image
 
-
 class Image(object):
     DEFAULT_WIDTH = 640
     DEFAULT_HEIGHT = 480
-    PYRAMID_RATIO = np.sqrt(2)
-    PYRAMID_LIMIT = 10
 
     def __init__(self, image_path):
         self._image_path = image_path
@@ -765,7 +761,7 @@ class Image(object):
         self._image_rgb = None
         self._image_processed = None
         self._building = None  # type: Building
-        self._pyramid = None
+
         self._all_features = None  # type: list[Feature]
 
     def __repr__(self):
@@ -780,34 +776,6 @@ class Image(object):
         if self._image_gray is None:
             self._lazy_load()
         return self._image_gray
-
-    def get_pyramid(self):
-        """
-
-        :rtype: PyramidLevel
-        """
-        if self._pyramid is None:
-            self._init_pyramid()
-        return self._pyramid
-
-    def _init_pyramid(self):
-        self._pyramid = []
-        current = self.get_processed()
-        scale = 1.0
-        while current.shape[0] > Image.PYRAMID_LIMIT and current.shape[1] > Image.PYRAMID_LIMIT:
-            self._pyramid.append(PyramidLevel(self, current, scale))
-            current = Image.pyr_down(current)
-            scale /= 2
-
-    @staticmethod
-    def pyr_down(image):
-        """
-
-        :param image: np.ndarray
-        :rtype: np.ndarray
-        """
-        return cv2.pyrDown(image)  # , dstsize=(
-        # int(image.shape[0] / Image.PYRAMID_RATIO), int(image.shape[1] / Image.PYRAMID_RATIO)))
 
     def get_rgb(self):
         """
@@ -866,8 +834,18 @@ class Image(object):
         cv2.waitKey()
 
     def get_all_features(self):
-        """
+        pass
 
+class PyramidImage(Image):
+    PYRAMID_RATIO = np.sqrt(2)
+    PYRAMID_LIMIT = 10
+
+    def __init__(self, image_path):
+        super(PyramidImage,self).__init__(image_path)
+        self._pyramid = None
+
+    def get_all_features(self):
+        """
         :rtype: list[Feature]
         """
         if self._all_features is None:
@@ -879,6 +857,56 @@ class Image(object):
             self._pyramid = None
         return self._all_features
 
+    def get_pyramid(self):
+        """
+
+        :rtype: PyramidLevel
+        """
+        if self._pyramid is None:
+            self._init_pyramid()
+        return self._pyramid
+
+    def _init_pyramid(self):
+        self._pyramid = []
+        current = self.get_processed()
+        scale = 1.0
+        while current.shape[0] > PyramidImage.PYRAMID_LIMIT and current.shape[1] > PyramidImage.PYRAMID_LIMIT:
+            self._pyramid.append(PyramidLevel(self, current, scale))
+            current = PyramidImage.pyr_down(current)
+            scale /= 2
+
+    @staticmethod
+    def pyr_down(image):
+        """
+
+        :param image: np.ndarray
+        :rtype: np.ndarray
+        """
+        return cv2.pyrDown(image)  # , dstsize=(
+        # int(image.shape[0] / PyramideImage.PYRAMID_RATIO), int(image.shape[1] / PyramidImage.PYRAMID_RATIO)))
+
+class PyramidFaceImage(PyramidImage):
+    def __init__(self, image_path, cascade_path):
+        super(PyramidFaceImage,self).__init__(image_path)
+        self.cascade_path = cascade_path
+
+    def _lazy_load(self):
+        super(PyramidFaceImage, self)._lazy_load()
+        face_cascade = cv2.CascadeClassifier(self.cascade_path)
+#        cv2.imshow('drek', self._image_rgb)
+        faces = face_cascade.detectMultiScale(self._image_gray, 1.3, 5)
+        if len(faces) == 0:
+            print_warn('No face founds, defaulting to whole image region')
+            return
+        else:
+            face = faces[0]
+            print 'Face found:', face
+            x = face[0]
+            y = face[1]
+            w = face[2]
+            h = face[3]
+            self._image_gray = self._image_gray[y:y+h, x:x+w].copy()
+            self._image_rgb = self._image_rgb[y:y+h, x:x+w].copy()
 
 class Building(object):
     def __init__(self, identifier, name, images):
@@ -943,7 +971,7 @@ class Building(object):
 class ImageLoader2(object):
     @staticmethod
     def is_image_file(path):
-        return any([path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif']])
+        return any([path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.JPG']])
 
     SWARM = "swarm"
 
@@ -967,7 +995,8 @@ class ImageLoader2(object):
         for idx, (name, image_paths) in enumerate(self._image_files.iteritems()):
             images = []
             for image_path in image_paths:
-                image = Image(image_path)
+                image = PyramidFaceImage(image_path, 'haarcascade_frontalface_default.xml')
+                # image = PyramidImage(image_path)
                 images.append(image)
 
             building = Building(idx, name, images)
