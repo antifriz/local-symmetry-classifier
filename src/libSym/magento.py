@@ -80,7 +80,7 @@ METHODS = ['mode', 'mode50', 'sum', 'mode2times']
 
 
 def predict(data):
-    #try:
+    # try:
     image, clf, progress, method = data  # type: Image,MagentoClassifier,float,str
     progress_str = str(int(progress * 100))
     perc_str = "[" + str(" " * (3 - len(progress_str)) + progress_str) + "%] | "
@@ -98,7 +98,7 @@ def predict(data):
     argmax_proba = np.argmax(predicted_proba, axis=1)
     max_proba = np.max(predicted_proba, axis=1)
     argsorted_proba = np.argsort(predicted_proba, axis=1)
-    if predicted_proba.shape[1]>1:
+    if predicted_proba.shape[1] > 1:
         secondmax_proba = np.sort(predicted_proba, axis=1)[:, -2]
     calc_mode = lambda x: int(clf._classes[int(sp.stats.mstats.mode(x)[0][0])])
 
@@ -113,7 +113,7 @@ def predict(data):
         mode_50_method = mode_method
         print_info(prefix + " fallback to mode method")
 
-    mode_2_times = calc_mode(argmax_proba[max_proba >= 2 * secondmax_proba]) if predicted_proba.shape[1]>1 else -1
+    mode_2_times = calc_mode(argmax_proba[max_proba >= 2 * secondmax_proba]) if predicted_proba.shape[1] > 1 else -1
 
     if method == 'mode':
         i = mode_method
@@ -131,7 +131,7 @@ def predict(data):
     if i != real_i:
         hit_by = list(np.array(METHODS)[np.where(res == real_i)])
         print_result(perc_str + "MISS " + name(i) + " =/= " + str(image) + " " + str(
-            "hit by " + ', '.join(hit_by) if len(hit_by) > 0 else ""))
+                "hit by " + ', '.join(hit_by) if len(hit_by) > 0 else ""))
 
         print_info(perc_str + name(mode_method) + " <- mode method") if i != mode_method else None
         print_info(perc_str + name(sum_method) + " <- sum method") if i != sum_method else None
@@ -140,23 +140,7 @@ def predict(data):
         # clf.show_match(image, descriptors_all)
     else:
         print_result(prefix + "HIT")
-    # print_result(("HIT  " if i == image.get_building().get_identifier() else "MISS ") + " " + str(image))
     return res
-    #except Exception as e:
-    #    raise e
-    # clf.append(result)
-    # elif method == 'strict':
-    #    pp = self._classifier.predict_proba(descriptors)
-    #    chances = np.zeros(pp.shape[1])
-    #    for p in pp:
-    #        if np.max(p) > 0.5:
-    #            chances[np.argmax(p)] += 1000.0 / len(self._train_image_ids[self._train_image_ids == np.argmax(p)])
-    #    np.argmax(chances)
-    # else:
-    #    raise Exception('Unknown predict method')
-    real = image.get_building().get_identifier()
-    # print_info("["+str(round(float(idx)/len(images),2))+"%] "+("HIT  " if real == result else "MISS ")+"| Image " + str(image) + " predicted: " + str(result) + ", real: " + str(
-    #         real))
 
 
 class MagentoClassifier(object):
@@ -194,11 +178,11 @@ class MagentoClassifier(object):
             ult_score += score
             seed += 1 if seed != -1 else 0
             print_result("Ultimate score so far is " + str(ult_score[method_idx] / iter) + " (all scores: " + str(
-                zip(METHODS, ult_score / iter)) + ")")
+                    zip(METHODS, ult_score / iter)) + ")")
         score_iterations = ult_score / iterations
 
         print_result("Ultimate score is " + str(score_iterations[method_idx]) + " (all scores: " + str(
-            zip(METHODS, score_iterations)) + ")")
+                zip(METHODS, score_iterations)) + ")")
         return score_iterations
 
     @staticmethod
@@ -258,7 +242,6 @@ class MagentoClassifier(object):
             features_all.append(image.get_all_features())
         features_all = [feature for features in features_all for feature in features]
 
-        # features_all = [feature for image in images for feature in image.get_all_features()]
         self._features_all = features_all
 
         descriptors_all = np.array([feature.get_descriptor() for feature in features_all])
@@ -309,35 +292,8 @@ class MagentoClassifier(object):
         """
         distances, matches = self._classifier.kneighbors(descriptors_all, return_distance=True, n_neighbors=1)
 
-        # image_train = self._buildings[0].get_images()[0]
-        """
-        :type image_train: Image
-        """
-        # image_train_rgb = image_train.get_rgb()
-        image_test_rgb = image_test.get_rgb()
+        image_test_rgb = image_test.get_rgb()  # type: Image
 
-        # offset = image_test_rgb.shape[1]
-        # size = offset + image_train_rgb.shape[1]
-
-        # showoff = np.zeros((Image.DEFAULT_HEIGHT, size, 3), np.uint8)
-
-        # showoff[0:image_test_rgb.shape[0], 0:image_test_rgb.shape[1], :] = image_test_rgb
-        # showoff[0:image_train_rgb.shape[0], 0 + offset:image_train_rgb.shape[1] + offset, :] = image_train_rgb
-
-        # only_circles = showoff.copy()
-        # raw_showoff = showoff.copy()
-        # only_circles = image_test_rgb.copy()
-        # for feature in image_test.get_all_features():
-        #     xy1, w1 = feature.get_global_xy_w()
-        #     cv2.circle(only_circles, tuple(xy1), w1, (0, 0, 255), thickness=1)
-        # for feature in image_train.get_all_features():
-        #     xy2, w2 = feature.get_global_xy_w()
-        #     xy2 = xy2 + [offset, 0]  # do not += !!!
-        #     cv2.circle(only_circles, tuple(xy2), w2, (0, 0, 255), thickness=1)
-        # cv2.imshow("ftrs", only_circles)
-        # cv2.waitKey()
-
-        matching_score = 0
         for feature, matchs, distancess in zip(image_test.get_all_features(), matches, distances):
             xy1, w1 = feature.get_global_xy_w()
             for m in matchs:
@@ -358,59 +314,6 @@ class MagentoClassifier(object):
                 cv2.circle(showoff, tuple(xy1), w1, (0, 0, 255), thickness=1)
                 cv2.circle(showoff, tuple(xy2), w2, (0, 0, 255), thickness=1)
                 plt.imshow(cv2.cvtColor(showoff, cv2.COLOR_RGB2BGR)), plt.show()
-                #
-                #     matching_score += (xy1 - xy2) ** 2  # + (w1-w2)**2
-                # print "", np.sqrt(np.average(matching_score)), " +- ", np.sqrt(np.std(matching_score))
-                #
-                # FACTOR = 3
-                # for feature, matchs, distancess in zip(image_test.get_all_features(), matches, distances):
-                #     showoff2 = raw_showoff.copy()
-                #     xy1, w1 = feature.get_global_xy_w()
-                #
-                #     # if all(distances>FACTOR):
-                #     #     continue
-                #
-                #     cv2.circle(showoff, tuple(xy1), w1, (0, 0, 255), thickness=1)
-                #     cv2.circle(showoff2, tuple(xy1), w1, (0, 0, 255), thickness=1)
-                #
-                #     feature.show("test")
-                #     for idx, (match, distance) in enumerate(zip(matchs, distancess)):
-                #         # if distance>FACTOR:
-                #         #     continue
-                #         other_feature = image_train.get_all_features()[match]
-                #         xy2_, w2 = other_feature.get_global_xy_w()
-                #         xy2 = xy2_ + [offset, 0]  # do not += !!!
-                #         other_feature.show("train")
-                #         print distance
-                #
-                #         score___ = (1 - (feature._score * other_feature._score) / (15.0 ** 2))
-                #         rating = int(score___ * 128 + 127)
-                #         distance_ = int(1 / (distance + 1) * 10)
-                #         # print distance, distance_, rating, feature._score, other_feature._score
-                #         cv2.line(showoff, tuple(xy1), tuple(xy2), (0, 0, rating), distance_)
-                #         cv2.line(showoff2, tuple(xy1), tuple(xy2), (0, 0, rating), distance_)
-                #         cv2.circle(showoff, tuple(xy2), w2, (0, 0, 255), thickness=1)
-                #         cv2.circle(showoff2, tuple(xy2), w2, (0, 0, 255), thickness=1)
-                #
-                #         # if (xy2_-xy1).dot(xy2_-xy1) < 1000:
-                #         cv2.imshow("", showoff2)
-                #         k = cv2.waitKey(0)
-                #         if k == 27:  # wait for ESC key to exit
-                #             cv2.destroyAllWindows()
-                #             exit(0)
-                #             # def get_stripe(img, f):
-                #             #     return cv2.resize(img[f._y - 5:f._y + 5 + 1, f._x - f._w:f._x + f._w + 1], (0, 0), fx=10, fy=10,
-                #             #                       interpolation=cv2.INTER_NEAREST)
-                #             #
-                #             # first_stripe = get_stripe(image_test.get_processed(), feature)
-                #             # second_stripe = get_stripe(image_train.get_processed(), other_feature)
-                #             # cv2.imshow("A", first_stripe)
-                #             # cv2.imshow("B", second_stripe)
-                #
-                # cv2.imshow("", showoff)
-                # cv2.imwrite("../buildings-data/outputs/jej/_" + str(random.random()) + "cool.jpg", showoff,
-                #             [int(cv2.IMWRITE_JPEG_QUALITY), 100])
-                # cv2.waitKey()
 
 
 class Feature(object):
@@ -451,16 +354,8 @@ class Feature(object):
 
         angles, weights_all, _ = self._pyramid_level.get_data()
         scan_lines = (angles[y - h: y + h + 1, x - w:x + w] + 202.5) % 360
-        # weights = weights_all[y - h: y + h + 1, x - w:x + w]
-
 
         splitted_scan_lines = np.split(scan_lines, CHUNKS, axis=1)
-        # splitted_weights = np.split(weights, CHUNKS, axis=1)
-
-        # hs =
-        # for chunk_lines, chunk_weights in zip(splitted_scan_lines, splitted_weights):
-        #     c_lines = (chunk_lines+180+45/2.0)%360
-        #     hs.append([np.histogram(c_lines, bins=8, range=(0, 360))[0]
 
         self._descriptor = np.array(
                 [np.histogram(c_lines, bins=8, range=(0, 360))[0] for c_lines in splitted_scan_lines]).flatten()
@@ -693,13 +588,13 @@ class PyramidLevel(object):
                     if allowed_area[y, x]:
                         trace_scan_line_b4 = _get_left(scan_line, x, w) + _get_right(scan_line, x,
                                                                                      w)  # npr ak imamo [ 65 21 172 -156 -25 -60] onda ddobijemo [  65  21  172] + [ -60 -25 -156] = [  5   -4   16]
-                        # [  5   -4   16]
+
+                        trace_scan_line_b4 = np.abs(trace_scan_line_b4)  # [  5   -4   16] -> [  5   4   16]
+
                         trace_scan_line_b4 = np.minimum(trace_scan_line_b4,
                                                         360 - trace_scan_line_b4)  # primjer [179] i [179] su udaljeni za 2 a ne za 358 stupnjeva
                         trace_weight_line = (_get_left(weight_line, x, w) * _get_right(weight_line, x, w))
                         # weight_line_sum = np.sum(trace_weight_line)
-
-                        trace_scan_line_b4 = np.abs(trace_scan_line_b4)  # [  5   -4   16] -> [  5   4   16]
 
                         trace_scan_line = trace_scan_line_b4.copy()
                         trace_scan_line *= trace_weight_line  # * kernel[:,:,0]
@@ -731,7 +626,7 @@ class PyramidLevel(object):
                         #     print np.round(trace_scan_line, 2), "trace after"
                         #     print np.round(trace_weight_line, 2), "factors"
 
-            filtered_heatmap = heatmap[heatmap != DISALLOWED_AREA_CONSTANT]
+            # filtered_heatmap = heatmap[heatmap != DISALLOWED_AREA_CONSTANT]
             # if len(filtered_heatmap) > 0:
             #    print np.max(filtered_heatmap), np.min(filtered_heatmap), np.average(filtered_heatmap), np.std(
             #            filtered_heatmap), heatmap.shape
@@ -758,8 +653,8 @@ class PyramidLevel(object):
                 cv2.circle(img, (xy[1], xy[0]), 1, (0, 0, 255))
                 # img[xy[0], xy[1]] = (0, 0, 255 - 0*(minval - np.min(min_vals)) / (np.max(min_vals) - np.min(min_vals)) * 255)
 
-            b, g, r = cv2.split(img)
-            img = cv2.merge([r, g, b])
+            # b, g, r = cv2.split(img)
+            # img = cv2.merge([r, g, b])
             # plt.subplot(121), plt.imshow(img), plt.subplot(122), plt.imshow(allowed_area, 'gray'), plt.show()
             # print minimums.shape
             np.save(cache_path, np.hstack((minimums, min_vals[:, np.newaxis])))
