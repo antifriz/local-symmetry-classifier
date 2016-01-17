@@ -885,7 +885,6 @@ class ORBImage(Image):
         self._descriptor = cv2.ORB_create()
 
         #CV SHIT kojeg nemrem ovroti
->>>>>>> Stashed changes
 
     def get_all_features(self):
         #Feature(keypoint.x,keypoint.y,...)
@@ -988,7 +987,6 @@ class Building(object):
 class ImageLoader(object):
     @staticmethod
     def is_image_file(path):
-<<<<<<< Updated upstream
         return any([path.endswith(ext) for ext in SUPPORTED_IMAGE_FORMATS])
 
 
@@ -1017,7 +1015,6 @@ class ImageLoader(object):
         """
         buildings = []
         for idx, (name, image_paths) in enumerate(self._image_files.iteritems()):
-<<<<<<< Updated upstream
             images = [
                 PyramidImage(image_path) if not self._haar_cascade else PyramidFaceImage(image_path, self._haar_cascade)
                 for image_path in image_paths]
