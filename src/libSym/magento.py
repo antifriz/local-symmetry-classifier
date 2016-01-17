@@ -104,7 +104,8 @@ def predict(data):
 
     mode_method = calc_mode(argmax_proba)
 
-    sum_method = int(clf._buildings[np.argmax(np.sum(predicted_proba, axis=0))].get_identifier())
+    np_sum = np.sum(predicted_proba, axis=0) / predicted_proba.shape[0]
+    sum_method = int(clf._buildings[np.argmax(np_sum)].get_identifier())
 
     trimmed = argmax_proba[max_proba >= 0.5]
     if trimmed.shape[0] > 0:
@@ -130,7 +131,7 @@ def predict(data):
     real_i = image.get_building().get_identifier()
     if i != real_i:
         hit_by = list(np.array(METHODS)[np.where(res == real_i)])
-        print_result(perc_str + "MISS " + name(i) + " =/= " + str(image) + " " + str(
+        print_result(perc_str + "MISS "+ str(round(np.max(np_sum) * 100, 0) )+ "% " + name(i) + " =/= " + str(image) + " " + str(
                 "hit by " + ', '.join(hit_by) if len(hit_by) > 0 else ""))
 
         print_info(perc_str + name(mode_method) + " <- mode method") if i != mode_method else None
@@ -139,7 +140,7 @@ def predict(data):
         print_info(perc_str + name(mode_2_times) + " <- mode 2 times method") if i != mode_2_times else None
         # clf.show_match(image, descriptors_all)
     else:
-        print_result(prefix + "HIT")
+        print_result(perc_str + "HIT "+ str(round(np.max(np_sum) * 100, 0) )+ "%")
     return res
 
 
