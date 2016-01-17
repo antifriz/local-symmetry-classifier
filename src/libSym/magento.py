@@ -12,6 +12,11 @@ from multiprocessing import cpu_count
 from sklearn.neighbors import KNeighborsClassifier
 import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import f1_score
+from sklearn.metrics import precision_score
+from sklearn.metrics import recall_score
 
 from os import walk
 from os.path import join, basename
@@ -77,7 +82,16 @@ def print_result(str):
 
 
 METHODS = ['mode', 'mode50', 'sum', 'mode2times']
+#metode s kojima se odlucuje kako svaki feature odredjuje svoju klasu
+#mode = najcesca klasa od svih featurea
+#mode 50 uzima u obzir samo one feature u max_proba koje su vece od 50%
+#mode2times uzima u obzir samo one feature u max_proba ciji omjer najcesce i bilo koje druge 2 ili veci
+#sum uzima za svaku klasu posumirane sve vjerojatnosti od svih featurea i onda uzme najvecu od tih suma
 
+#deskriptor je opis okoline tocke na slici
+
+def gimme_building(index, clf):
+    return filter(lambda b: b.get_identifier() == index, clf._buildings)[0]
 
 def predict(data):
     # try:
@@ -101,11 +115,15 @@ def predict(data):
     if predicted_proba.shape[1] > 1:
         secondmax_proba = np.sort(predicted_proba, axis=1)[:, -2]
     calc_mode = lambda x: int(clf._classes[int(sp.stats.mstats.mode(x)[0][0])])
+    #clf classes mapira prave idxove klasa sa indeksiranima
 
     mode_method = calc_mode(argmax_proba)
 
     sum_method = int(clf._buildings[np.argmax(np.sum(predicted_proba, axis=0))].get_identifier())
 
+    #max proba su vjerojatnosti, argmax_proba su id-ovi klasa
+    #radi dobro samo za manje broja klasa ??
+    #zato jer kod vise klasa su sve vrijednosti dosta male == ako se to dogodi on se premijesti na obicnu mod metodu
     trimmed = argmax_proba[max_proba >= 0.5]
     if trimmed.shape[0] > 0:
         mode_50_method = calc_mode(trimmed)
@@ -125,10 +143,21 @@ def predict(data):
         i = mode_2_times
     else:
         raise Exception()
+
     res = np.array([mode_method, mode_50_method, sum_method, mode_2_times])
-    name = lambda x: filter(lambda b: b.get_identifier() == x, clf._buildings)[0].get_name()
     real_i = image.get_building().get_identifier()
     if i != real_i:
+        #building = lambda x: filter(lambda b: b.get_identifier() == x, clf._buildings)[0]
+        building = gimme_building(i, clf)
+        #name = building.get_name()
+        image.get_building().inc_FN()
+        building.inc_FP()
+
+        for b in clf._buildings:
+            if (b.get_identifier() != i) and (b.get_identifier() != real_i):
+                b.inc_TN()
+        name = lambda x: filter(lambda b: b.get_identifier() == x, clf._buildings)[0].get_name()
+
         hit_by = list(np.array(METHODS)[np.where(res == real_i)])
         print_result(perc_str + "MISS " + name(i) + " =/= " + str(image) + " " + str(
                 "hit by " + ', '.join(hit_by) if len(hit_by) > 0 else ""))
@@ -139,7 +168,12 @@ def predict(data):
         print_info(perc_str + name(mode_2_times) + " <- mode 2 times method") if i != mode_2_times else None
         # clf.show_match(image, descriptors_all)
     else:
-        print_result(prefix + "HIT")
+        image.get_building().inc_TP()
+        for b in clf._buildings:
+            if b.get_identifier() != image.get_building().get_identifier():
+                b.inc_TN()
+        #map(lambda b: b.inc_TN(), clf._buildings)
+        print_result(perc_str + "HIT")
     return res
 
 
@@ -179,6 +213,14 @@ class MagentoClassifier(object):
             seed += 1 if seed != -1 else 0
             print_result("Ultimate score so far is " + str(ult_score[method_idx] / iter) + " (all scores: " + str(
                     zip(METHODS, ult_score / iter)) + ")")
+
+            for b in mc._buildings:
+                #b = img.get_building()
+                print b.get_name()
+                print "TP, FP, FN, TN"
+                print(b.get_TP(), b.get_FP(), b.get_FN(), b.get_TN())
+                b.reset_conf_matrix()
+
         score_iterations = ult_score / iterations
 
         print_result("Ultimate score is " + str(score_iterations[method_idx]) + " (all scores: " + str(
@@ -255,6 +297,7 @@ class MagentoClassifier(object):
 
         self._classifier.fit(descriptors_all, classes_all)
 
+    #vrati matricu stupci = metode izracuna, redovi = slike
     def predict(self, images, method='mode'):
         """
 
@@ -281,7 +324,29 @@ class MagentoClassifier(object):
         """
         print_info("Starting scoring process")
         y_pred = np.array(self.predict(images, method=method))
+        y_pred_sum = y_pred[:,2]
+        print "pred"
+        print y_pred_sum
         y_true = np.array([image.get_building().get_identifier() for image in images])[:, np.newaxis]
+        y_true_sum = y_true[:,0]
+        print "true"
+        print y_true_sum
+
+        cm = confusion_matrix(y_true_sum, y_pred_sum)
+        print "confusion matrix"
+        print cm
+        print "macro: acc, prec, rec, F1"
+        print accuracy_score(y_true_sum, y_pred_sum)
+        print precision_score(y_true_sum, y_pred_sum,average='macro')
+        print recall_score(y_true_sum, y_pred_sum,average='macro')
+        print f1_score(y_true_sum, y_pred_sum,average='macro')
+
+        print "micro: acc, prec, rec, F1"
+        print accuracy_score(y_true_sum, y_pred_sum)
+        print precision_score(y_true_sum, y_pred_sum,average='micro')
+        print recall_score(y_true_sum, y_pred_sum,average='micro')
+        print f1_score(y_true_sum, y_pred_sum,average='micro')
+
         return np.sum((y_true - y_pred) == 0, axis=0) / float(y_pred.shape[0])
 
     def show_match(self, image_test, descriptors_all):
@@ -346,7 +411,9 @@ class Feature(object):
         :rtype: np.array
         """
         CHUNKS = 4
-
+        #podjela prozora na 4
+        #feature je zapravo prozor
+        #sredisnja tocka s prozorom
         x = self._x
         y = self._y
         w = Feature.WIDTH
@@ -512,21 +579,24 @@ class PyramidLevel(object):
         # threshold = THRESHOLD * (Feature.HEIGHT * 2 + 1) * Feature.WIDTH
         # allowed_area = (left > threshold) & (right>threshold)
 
+
+        #sta je ovo molim te
+        # plt.subplot(231), plt.imshow(allowed_area, cmap='gray')
         allowed_area = morphology.binary_dilation(allowed_area, structure=left_test) & morphology.binary_dilation(
                 allowed_area, structure=right_test)
 
         self._data = (sobel_angles, sobel_weights, allowed_area)
-        # plt.subplot(231), plt.imshow(self._grayscale, cmap='gray')
+
         # plt.subplot(232), plt.imshow(allowed_area, cmap='gray')
         # plt.subplot(233), plt.imshow(sobel_norms, cmap='gray')
         # plt.subplot(234), plt.imshow(sobel_angles, cmap='gray')
         # plt.subplot(235), plt.imshow(sobel_weights,'gray'),plt.show()
-        # plt.subplot(235), plt.imshow(sobel_x, cmap='gray')
-        # plt.subplot(236), plt.imshow(sobel_y, cmap='gray'), plt.show()
-        # print np.min(sobel_x), np.max(sobel_x), np.min(sobel_y), np.max(sobel_y)
+        #plt.subplot(235), plt.imshow(sobel_x, cmap='gray')
+        #plt.subplot(236), plt.imshow(sobel_y, cmap='gray'), plt.show()
+        #print np.min(sobel_x), np.max(sobel_x), np.min(sobel_y), np.max(sobel_y)
 
-        # self._matrix
-        # exit(0)
+        #self._matrix
+        #exit(0)
 
     def get_scale(self):
         return self._scale
@@ -571,6 +641,8 @@ class PyramidLevel(object):
             x_offset, y_offset = int(angles.shape[1] * IMAGE_BORDER_IGNORE_RATIO), int(
                     angles.shape[0] * IMAGE_BORDER_IGNORE_RATIO)
 
+            #crni pikseli imaju veliki score, manji score je bolji
+            # sad su svi stavljeni na taj veliki score a poslije se prepravljaju bijeli
             heatmap = np.ones(angles.shape) * DISALLOWED_AREA_CONSTANT
 
             # kernel_x = cv2.getGaussianKernel(Feature.WIDTH * 2, 0)[np.newaxis, :]
@@ -585,7 +657,7 @@ class PyramidLevel(object):
                 scan_line = angles[y - h:y + h + 1, :]
                 weight_line = norms[y - h:y + h + 1, :]
                 for x in range(x_offset + w, angles.shape[1] - w - x_offset):
-                    if allowed_area[y, x]:
+                    if allowed_area[y, x]:#ako je bijeli piksel
                         trace_scan_line_b4 = _get_left(scan_line, x, w) + _get_right(scan_line, x,
                                                                                      w)  # npr ak imamo [ 65 21 172 -156 -25 -60] onda ddobijemo [  65  21  172] + [ -60 -25 -156] = [  5   -4   16]
 
@@ -636,7 +708,7 @@ class PyramidLevel(object):
             # plt.imshow(heatmap_to_showoff, cmap='gray'), plt.show()
 
             minimums = np.array(detect_local_minima(heatmap)).T
-            img = cv2.cvtColor(self._grayscale, cv2.COLOR_GRAY2BGR)
+            # img = cv2.cvtColor(self._grayscale, cv2.COLOR_GRAY2BGR)
 
             min_vals = heatmap[minimums[:, 0], minimums[:, 1]]
             argsort_indices = np.argsort(min_vals)
@@ -646,11 +718,12 @@ class PyramidLevel(object):
             if minimums.shape[0] > LIMIT:
                 minimums = minimums[:LIMIT]
                 min_vals = min_vals[:LIMIT]
+            #odbaci bijele tocke s losim scoreom (dot)
             minimums = minimums[min_vals < DIFFERENCE_THRESHOLD]
             min_vals = min_vals[min_vals < DIFFERENCE_THRESHOLD]
-
-            for xy, minval in zip(minimums, min_vals):
-                cv2.circle(img, (xy[1], xy[0]), 1, (0, 0, 255))
+            #
+            # for xy, minval in zip(minimums, min_vals):
+            #     cv2.circle(img, (xy[1], xy[0]), 1, (0, 0, 255))
                 # img[xy[0], xy[1]] = (0, 0, 255 - 0*(minval - np.min(min_vals)) / (np.max(min_vals) - np.min(min_vals)) * 255)
 
             # b, g, r = cv2.split(img)
@@ -731,6 +804,7 @@ class Image(object):
         return self._image_rgb
 
     def _lazy_load(self):
+        #smanjuje sliku tako da nije stretchana
         image = self._letterbox_image(cv2.imread(self._image_path))
 
         if len(image.shape) != 3:
@@ -876,11 +950,46 @@ class Building(object):
         self._index = None
         self._name = name
 
+        self._TP = 0
+        self._TN = 0
+        self._FP = 0
+        self._FN = 0
+
     def __hash__(self):
         return self.get_identifier()
 
     def __repr__(self):
         return self.get_name()
+
+    def get_TP(self):
+        return self._TP
+
+    def get_FP(self):
+        return self._FP
+
+    def get_TN(self):
+        return self._TN
+
+    def get_FN(self):
+        return self._FN
+
+    def inc_FN(self):
+        self._FN += 1
+
+    def inc_TP(self):
+        self._TP += 1
+
+    def inc_FP(self):
+        self._FP += 1
+
+    def inc_TN(self):
+        self._TN += 1
+
+    def reset_conf_matrix(self):
+        self._FN = 0
+        self._FP = 0
+        self._TN = 0
+        self._TP = 0
 
     def get_name(self):
         """
