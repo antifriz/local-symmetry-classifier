@@ -108,7 +108,7 @@ def predict(data):
     np_sum = np.sum(predicted_proba, axis=0) / predicted_proba.shape[0]
     sum_method = int(clf._buildings[np.argmax(np_sum)].get_identifier())
 
-    trimmed = argmax_proba[max_proba >= 0.5]
+    trimmed = argmax_proba[max_proba >= 0.7]
     if trimmed.shape[0] > 0:
         mode_50_method = calc_mode(trimmed)
     else:
@@ -146,7 +146,7 @@ def predict(data):
 
 
 class MagentoClassifier(object):
-    N_NEIGHBORS = 10
+    N_NEIGHBORS = 2 # was 10
     KNN_WEIGHTS = 'distance'
 
     @staticmethod
@@ -1016,7 +1016,7 @@ class ImageLoader(object):
         buildings = []
         for idx, (name, image_paths) in enumerate(self._image_files.iteritems()):
             images = [
-                PyramidImage(image_path) if not self._haar_cascade else PyramidFaceImage(image_path, self._haar_cascade)
+                OpenImage(image_path, cv2.SIFT()) if not self._haar_cascade else PyramidFaceImage(image_path, self._haar_cascade)
                 for image_path in image_paths]
 
             building = Building(idx, name, images)
