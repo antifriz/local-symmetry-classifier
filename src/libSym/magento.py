@@ -5,6 +5,7 @@ from scipy.spatial.distance import euclidean, cdist
 import gc
 import scipy as sp
 import cv2
+
 import numpy as np
 import random
 from matplotlib import pyplot as plt
@@ -107,7 +108,7 @@ def predict(data):
     np_sum = np.sum(predicted_proba, axis=0) / predicted_proba.shape[0]
     sum_method = int(clf._buildings[np.argmax(np_sum)].get_identifier())
 
-    trimmed = argmax_proba[max_proba >= 0.5]
+    trimmed = argmax_proba[max_proba >= 0.7]
     if trimmed.shape[0] > 0:
         mode_50_method = calc_mode(trimmed)
     else:
@@ -145,7 +146,7 @@ def predict(data):
 
 
 class MagentoClassifier(object):
-    N_NEIGHBORS = 10
+    N_NEIGHBORS = 2 # was 10
     KNN_WEIGHTS = 'distance'
 
     @staticmethod
@@ -249,7 +250,7 @@ class MagentoClassifier(object):
         assert len(descriptors_all.shape) == 2
 
         classes_all = np.array(
-                [feature.get_pyramid_level().get_image().get_building().get_identifier() for feature in features_all])
+                [feature.get_image().get_building().get_identifier() for feature in features_all])
         assert len(classes_all.shape) == 1
 
         assert descriptors_all.shape[0] == classes_all.shape[0]
@@ -299,7 +300,7 @@ class MagentoClassifier(object):
             xy1, w1 = feature.get_global_xy_w()
             for m in matchs:
                 other_feature = self._features_all[m]
-                image_train_rgb = other_feature.get_pyramid_level().get_image().get_rgb()
+                image_train_rgb = other_feature.get_image().get_rgb()
                 xy2, w2 = other_feature.get_global_xy_w()
 
                 offset = image_test_rgb.shape[1]
@@ -321,14 +322,18 @@ class Feature(object):
     WIDTH = 8  # actual width -> 2*WIDTH
     HEIGHT = 4  # actual height -> 2*HEIGHT + 1
 
-    def __init__(self, pyramid_level, score, x, y):
+    def __init__(self, pyramid_level, score, x, y,image = None):
         self._pyramid_level = pyramid_level
         self._x = x
         self._y = y
         self._score = score
         self._descriptor = None
         self._locality = None
-        self._calculate_descriptor()
+        if(image != None):
+            self._image = image
+        if(pyramid_level != None):
+            self._calculate_descriptor()
+            self._image = pyramid_level.get_image()
 
     def get_descriptor(self):
         """
@@ -368,6 +373,13 @@ class Feature(object):
         :rtype: PyramidLevel
         """
         return self._pyramid_level
+
+    def get_image(self):
+        """
+
+        :return: Image
+        """
+        return self._image
 
     def draw_me(self, image):
         """
@@ -699,6 +711,9 @@ class PyramidLevel(object):
 class Image(object):
     DEFAULT_WIDTH = 640
     DEFAULT_HEIGHT = 480
+    PYRAMID_RATIO = np.sqrt(2)
+    PYRAMID_LIMIT = 10
+
 
     def __init__(self, image_path):
         self._image_path = image_path
@@ -791,6 +806,7 @@ class PyramidImage(Image):
         self._pyramid = None
 
     def get_all_features(self):
+
         """
         :rtype: list[Feature]
         """
@@ -862,6 +878,46 @@ class PyramidFaceImage(PyramidImage):
             self._image_rgb = self._image_rgb[y:y + h, x:x + w].copy()
 
 
+
+class ORBImage(Image):
+    def __init__(self, image_path):
+        super(ORBImage,self).__init__(image_path)
+        self._descriptor = cv2.ORB_create()
+
+        #CV SHIT kojeg nemrem ovroti
+
+    def get_all_features(self):
+        #Feature(keypoint.x,keypoint.y,...)
+        #feautre._descriptor = sift_descriptro...
+
+        keys , descs = self._descriptor.detectAndCompute(self.get_gray(),None)
+        features = list()
+        for key, desc  in zip (keys,descs):
+            feature = Feature(None,0,key.pt[0],key.pt[1],image=self)
+            feature._descriptor = desc
+            features.append(feature)
+
+        return features
+
+class OpenImage(Image):
+    def __init__(self, image_path,clasifier):
+        super(OpenImage,self).__init__(image_path)
+        self._descriptor = clasifier
+
+        #CV SHIT kojeg nemrem ovroti
+
+    def get_all_features(self):
+        #Feature(keypoint.x,keypoint.y,...)
+        #feautre._descriptor = sift_descriptro...
+
+        keys , descs = self._descriptor.detectAndCompute(self.get_gray(),None)
+        features = list()
+        for key, desc  in zip (keys,descs):
+            feature = Feature(None,0,key.pt[0],key.pt[1],image=self)
+            feature._descriptor = desc
+            features.append(feature)
+
+        return features
 class Building(object):
     def __init__(self, identifier, name, images):
         """
@@ -933,6 +989,8 @@ class ImageLoader(object):
     def is_image_file(path):
         return any([path.endswith(ext) for ext in SUPPORTED_IMAGE_FORMATS])
 
+
+
     def __init__(self, data_path, haar_cascade=None):
         self._data_path = data_path
         swarm_folder = join(self._data_path, SWARM)
@@ -950,6 +1008,7 @@ class ImageLoader(object):
     def get_image_files(self):
         return self._image_files
 
+    #Promijenit PyramidImage u neki drugi subclass od Imagea
     def get_buildings(self):
         """
         :rtype: list[Building]
@@ -957,8 +1016,9 @@ class ImageLoader(object):
         buildings = []
         for idx, (name, image_paths) in enumerate(self._image_files.iteritems()):
             images = [
-                PyramidImage(image_path) if not self._haar_cascade else PyramidFaceImage(image_path, self._haar_cascade)
+                OpenImage(image_path, cv2.SIFT()) if not self._haar_cascade else PyramidFaceImage(image_path, self._haar_cascade)
                 for image_path in image_paths]
+
             building = Building(idx, name, images)
             buildings.append(building)
         return buildings
