@@ -1,6 +1,6 @@
 from magento import *
 
-image_path = '../../data/buildings/swarm/akal_takht/5AkalTakht1.jpg'
+image_path = '../../data/buildings/swarm/hallgirmskirkja/15Hallgrimskirkja5.jpg'
 
 image = PyramidImage(image_path)
 image_rgb = image.get_rgb()
